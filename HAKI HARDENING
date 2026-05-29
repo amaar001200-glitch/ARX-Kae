@@ -1,4 +1,5 @@
--- █ HAKI HARDENING (SAFE VERSION)
+-- █ HAKI HARDENING (FIXED)
+
 return function(env)
     local Config = env.Config
     local LocalPlayer = env.LocalPlayer
@@ -11,35 +12,46 @@ return function(env)
 
     local function IsBusoActive()
         local character = LocalPlayer.Character
-        if character then return character:FindFirstChild("HasBuso") ~= nil end
+        if character then
+            return character:FindFirstChild("HasBuso") ~= nil
+        end
         return false
     end
 
     local function ActivateBuso()
         pcall(function()
-            if CommF_ and not IsBusoActive() then CommF_:InvokeServer("Buso") end
+            if CommF_ and not IsBusoActive() then
+                CommF_:InvokeServer("Buso")
+            end
         end)
     end
 
     function HakiModule.Start()
-        if BusoConnection then BusoConnection:Disconnect() end
+        if BusoConnection then
+            BusoConnection:Disconnect()
+            BusoConnection = nil
+        end
         BusoConnection = RunService.Heartbeat:Connect(function()
-            if not Config.BusoEnabled then return end
-            if not IsBusoActive() then ActivateBuso() end
+            if Config.BusoEnabled and not IsBusoActive() then
+                ActivateBuso()
+            end
         end)
     end
 
     function HakiModule.Stop()
-        if BusoConnection then BusoConnection:Disconnect(); BusoConnection = nil end
+        if BusoConnection then
+            BusoConnection:Disconnect()
+            BusoConnection = nil
+        end
     end
 
     function HakiModule.Update()
-        if Config.BusoEnabled then HakiModule.Start() else HakiModule.Stop() end
+        if Config.BusoEnabled then
+            HakiModule.Start()
+        else
+            HakiModule.Stop()
+        end
     end
-
-    -- تأخير البدء لضمان تحميل كل شيء
-    task.wait(0.5)
-    if Config.BusoEnabled then HakiModule.Start() end
 
     return HakiModule
 end
