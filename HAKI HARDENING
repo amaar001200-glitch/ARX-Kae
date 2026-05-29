@@ -1,0 +1,52 @@
+-- █ HAKI HARDENING (WITH SAVE SYSTEM)
+
+-- تعريف نظام الحفظ لهذا الموديل
+local HakiModule = {}
+
+-- ربط الموديل بالنظام العام
+_G.ARAKS_Modules = _G.ARAKS_Modules or {}
+_G.ARAKS_Modules.Haki = HakiModule
+
+-- دوال الموديل
+local BusoConnection = nil
+local CommF_ = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes.CommF_
+
+local function IsBusoActive()
+    local character = LocalPlayer.Character
+    if character then return character:FindFirstChild("HasBuso") ~= nil end
+    return false
+end
+
+local function ActivateBuso()
+    pcall(function()
+        if CommF_ and not IsBusoActive() then CommF_:InvokeServer("Buso") end
+    end)
+end
+
+function HakiModule.Start()
+    if BusoConnection then BusoConnection:Disconnect(); BusoConnection = nil end
+    BusoConnection = RunService.Heartbeat:Connect(function()
+        if not Config.BusoEnabled then return end
+        if not IsBusoActive() then ActivateBuso() end
+    end)
+end
+
+function HakiModule.Stop()
+    if BusoConnection then BusoConnection:Disconnect(); BusoConnection = nil end
+end
+
+function HakiModule.Update()
+    if Config.BusoEnabled then
+        HakiModule.Start()
+    else
+        HakiModule.Stop()
+    end
+end
+
+-- بدء التشغيل إذا كان محفوظاً في الإعدادات
+if Config.BusoEnabled then
+    HakiModule.Start()
+end
+
+-- تصدير الموديل
+return HakiModule
