@@ -7,7 +7,7 @@ local Config = {
     Secret = "Amaartyu7",
 
     -- [3] Scripts & Links
-    MainScriptURL = "Https://pastefy.app/hV7i5cV3/raw",
+    MainScriptURL = "https://pastefy.app/hV7i5cV3/raw",
 
     -- [4] Social Media Settings
     ShowDiscord = false,
@@ -66,9 +66,7 @@ local function stop(reason)
 
     end)
 
-    while true do
-        task.wait(9e9)
-    end
+    task.wait(2)
 
 end
 
@@ -100,22 +98,20 @@ task.spawn(function()
 end)
 
 --==================================================
--- LOADSTRING CHECK
+-- SAFE LOADSTRING CHECK
 --==================================================
 
 task.spawn(function()
 
-    local old = loadstring
+    while task.wait(15) do
 
-    while task.wait(8) do
+        pcall(function()
 
-        if typeof(loadstring) ~= "function" then
-            flag("loadstring invalid")
-        end
+            if typeof(loadstring) ~= "function" then
+                flag("loadstring invalid")
+            end
 
-        if loadstring ~= old then
-            flag("loadstring modified")
-        end
+        end)
 
     end
 
