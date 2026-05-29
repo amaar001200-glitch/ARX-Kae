@@ -18,10 +18,10 @@ do
     local MaxDistance = 300
 
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
     local aimlockActive = false
     local aimRenderConn = nil
     local aimTimeoutTask = nil
-    local currentTool = nil
 
     local function getNearestTarget()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -43,7 +43,7 @@ do
 
                     if dist < shortest then
                         shortest = dist
-                        nearest = ehrp.Parent
+                        nearest = p.Character
                     end
                 end
             end
@@ -75,7 +75,9 @@ do
             return
         end
 
-        if not target:FindFirstChild("HumanoidRootPart") then
+        local targetHRP = target:FindFirstChild("HumanoidRootPart")
+
+        if not targetHRP then
             return
         end
 
@@ -87,11 +89,11 @@ do
                 return
             end
 
-            local targetHRP = target and target:FindFirstChild("HumanoidRootPart")
+            local hrp = target:FindFirstChild("HumanoidRootPart")
 
-            if targetHRP then
+            if hrp then
                 local camPos = Camera.CFrame.Position
-                Camera.CFrame = CFrame.new(camPos, targetHRP.Position)
+                Camera.CFrame = CFrame.new(camPos, hrp.Position)
             else
                 stopAimlock()
             end
@@ -156,3 +158,13 @@ do
         Enabled = Config.SkillAimlockEnabled
         LockDuration = Config.SkillAimlockDuration
     end
+
+    LocalPlayer.CharacterAdded:Connect(function(newChar)
+        char = newChar
+        stopAimlock()
+    end)
+end
+
+return SkillAimlockModule
+
+end
