@@ -1,170 +1,161 @@
---[[
-    ARAKS HUB | V23 FIXED - SKILL AIMLOCK SAVE SYSTEM
-    ==================================================
-    الإصلاح: تم إصلاح نظام حفظ وتحميل إعدادات المهارات (Z, X, C, V, F).
-]]
+-- █ MODULE: SKILL AIMLOCK (FIXED - مع حفظ المهارات)
+local SkillAimlockModule = {}
 
--- ... (الكود الأصلي يبقى كما هو حتى سطر Config = {}) ...
+do
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Workspace = game:GetService("Workspace")
+    local RunService = game:GetService("RunService")
+    local Camera = workspace.CurrentCamera
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- ============================================================================
--- ██ FIX 1: إضافة إعدادات المهارات إلى القيم الافتراضية (DefaultConfig)
--- ============================================================================
-local DefaultConfig = {
-    BusoEnabled = false,
-    WalkSpeed = 16,
-    JumpPower = 50,
-    FastAttackSpeed = 0.05,
-    AimbotActive = false,
-    AntiStun = false,
-    ESP_Box = false,
-    ESP_Name = false,
-    ESP_HealthBar = false,
-    ESP_Level = false,
-    ESP_Distance = false,
-    WaterWalk = false,
-    EscapeActive = false,
-    EscapeHealth = 14345,
-    FruitESP = false,
-    GoToFruitActive = false,
-    FastAttack = false,
-    AutoRandomFruit = false,
-    SpeedEnabled = false,
-    JumpEnabled = false,
-    AutoKenEnabled = false,
-    V3Enabled = false,
-    BunnyHopEnabled = false,
-    DodgeEnabled = false,
-    ZSkills = false,
-    TargetInfo = false,
-    AimbotModuleActive = false,
-    V4Enabled = false,
-    -- تمت إضافة SkillAimlockEnabled هنا
-    SkillAimlockEnabled = false, -- <-- تمت الإضافة
-    -- تمت إضافة إعدادات المهارات الخمسة هنا
-    SkillZ = false, -- <-- تمت الإضافة
-    SkillX = false, -- <-- تمت الإضافة
-    SkillC = false, -- <-- تمت الإضافة
-    SkillV = false, -- <-- تمت الإضافة
-    SkillF = false, -- <-- تمت الإضافة
-    FpsBoost = false,
-    FpsPingDisplay = false,
-    INFEnergy = false,
-    PvPRadar = false,
-}
+    local Enabled = false
+    local LockDuration = 1.0
+    local MaxDistance = 300
+    
+    -- جدول لتخزين حالة كل مهارة
+    local SkillsState = {
+        Z = false,
+        X = false,
+        C = false,
+        V = false,
+        F = false,
+    }
 
--- ... (الكود الأصلي يبقى كما هو حتى سطر ApplyAllConfig) ...
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local aimlockActive = false
+    local aimRenderConn = nil
+    local aimTimeoutTask = nil
 
--- ============================================================================
--- ██ FIX 2: إضافة تفعيل المهارات المحفوظة داخل ApplyAllConfig
--- ============================================================================
-local function ApplyAllConfig()
-    pcall(function()
-        if SkillAimlockModule then
-            -- تفعيل زر الـ Master Toggle
-            SkillAimlockModule:SetEnabled(Config.SkillAimlockEnabled)
-            -- تفعيل كل مهارة على حدة بناءً على القيم المحفوظة
-            SkillAimlockModule:SetSkill("Z", Config.SkillZ)
-            SkillAimlockModule:SetSkill("X", Config.SkillX)
-            SkillAimlockModule:SetSkill("C", Config.SkillC)
-            SkillAimlockModule:SetSkill("V", Config.SkillV)
-            SkillAimlockModule:SetSkill("F", Config.SkillF)
-            SkillAimlockModule:SetDuration(Config.SkillAimlockDuration or 1)
-        end
-    end)
+    local function getNearestTarget()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
 
-    -- ... (باقي الكود الأصلي لـ ApplyAllConfig يبقى كما هو دون تغيير) ...
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChild("Humanoid")
-    if hum then
-        hum.WalkSpeed = Config.SpeedEnabled and Config.WalkSpeed or 16
-        hum.JumpPower = Config.JumpEnabled and Config.JumpPower or 50
-    end
-    getgenv().AimbotActive = Config.AimbotActive
-    pcall(function()
-        if AimlockModule then
-            AimlockModule:SetPlayerAimlock(Config.AimbotModuleActive)
-            AimlockModule:SetNpcAimlock(Config.SilentAimNPC or false)
-            AimlockModule:SetPrediction(Config.Prediction)
-            if AimlockModule.SetPredictionTime then
-                AimlockModule:SetPredictionTime(Config.FastAttackSpeed or 0.05)
+        local nearest = nil
+        local shortest = MaxDistance
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
+                local h = p.Character:FindFirstChildOfClass("Humanoid")
+                if ehrp and h and h.Health > 0 then
+                    local dist = (ehrp.Position - hrp.Position).Magnitude
+                    if dist < shortest then
+                        shortest = dist
+                        nearest = p.Character
+                    end
+                end
             end
         end
-    end)
-    pcall(function()
-        if StuffsModule then
-            StuffsModule:SetAntiStun(Config.AntiStun)
-            StuffsModule:SetWalkWater(Config.WaterWalk)
-            StuffsModule:SetEscape(Config.EscapeActive)
-            StuffsModule:SetEscapeHealth(Config.EscapeHealth)
-            StuffsModule:SetBoatSpeed(Config.BoatSpeedEnabled)
-            StuffsModule:SetBoatSpeedValue(Config.BoatSpeedValue)
-            StuffsModule:SetBoatFly(Config.BoatFlyEnabled)
-            StuffsModule:SetBoatFlyHeight(Config.BoatFlyHeight)
-            StuffsModule:SetFpsBoost(Config.FpsBoost)
-            StuffsModule:SetINFEnergy(Config.INFEnergy)
-            StuffsModule:SetPingsOrFps(Config.FpsPingDisplay)
-            if StuffsModule.SetFog then StuffsModule:SetFog(Config.RemoveFog) end
-            if StuffsModule.SetLava then StuffsModule:SetLava(Config.RemoveLava) end
+        return nearest
+    end
+
+    local function stopAimlock()
+        if not aimlockActive then return end
+        aimlockActive = false
+        if aimRenderConn then
+            aimRenderConn:Disconnect()
+            aimRenderConn = nil
         end
-    end)
-    pcall(function()
-        if Config.FastAttack then
-            if StartFastAttack then StartFastAttack() end
-        else
-            if StopFastAttack then StopFastAttack() end
+        if aimTimeoutTask then
+            task.cancel(aimTimeoutTask)
+            aimTimeoutTask = nil
         end
-    end)
-    pcall(function()
-        if ESPModule then
-            ESPModule:SetBuso(Config.BusoEnabled)
-            ESPModule:SetV3(Config.V3Enabled)
-            ESPModule:SetBunnyhop(Config.BunnyHopEnabled)
-            ESPModule:SetNoDodgeCD(Config.DodgeEnabled)
-            if ESPModule.SetAntiAfk then ESPModule:SetAntiAfk(Config.AntiAFK or false) end
+    end
+
+    local function startAimlock(target)
+        if not Enabled or aimlockActive or not target then return end
+        local targetHRP = target:FindFirstChild("HumanoidRootPart")
+        if not targetHRP then return end
+
+        aimlockActive = true
+        aimRenderConn = RunService.RenderStepped:Connect(function()
+            if not Enabled or not aimlockActive then
+                stopAimlock()
+                return
+            end
+            local hrp = target:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local camPos = Camera.CFrame.Position
+                Camera.CFrame = CFrame.new(camPos, hrp.Position)
+            else
+                stopAimlock()
+            end
+        end)
+
+        aimTimeoutTask = task.delay(LockDuration, function()
+            stopAimlock()
+        end)
+    end
+
+    -- Hook للكشف عن استخدام المهارات
+    if not getgenv().SkillAimlock_Hooked then
+        getgenv().SkillAimlock_Hooked = true
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+            
+            if (method == "InvokeServer" or method == "FireServer") and Enabled then
+                local a1 = args[1]
+                if typeof(a1) == "string" then
+                    local skillKey = a1:upper()
+                    -- التحقق من تفعيل المهارة من الجدول
+                    if SkillsState[skillKey] then
+                        task.spawn(function()
+                            local target = getNearestTarget()
+                            if target then startAimlock(target) end
+                        end)
+                    end
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
+
+    -- دوال عامة للموديل
+    function SkillAimlockModule:SetEnabled(state)
+        Enabled = state
+        if not state then stopAimlock() end
+    end
+
+    -- هذه الدالة أصبحت تعمل الآن بشكل صحيح
+    function SkillAimlockModule:SetSkill(skill, state)
+        if skill and SkillsState[skill] ~= nil then
+            SkillsState[skill] = state
+            print("[SkillAimlock] " .. skill .. " = " .. tostring(state))
         end
-    end)
-    pcall(function()
-        if UiSettingsModule then
-            UiSettingsModule:SetV4(Config.V4Enabled)
-            UiSettingsModule:SetGoToFruit(Config.GoToFruitActive)
-            UiSettingsModule:SetAutoRandomFruit(Config.AutoRandomFruit)
-            UiSettingsModule:SetFruitCheck(Config.FruitCheck)
-            UiSettingsModule:SetTeleportFruit(Config.TeleportFruit)
-        end
-    end)
-    pcall(function()
-        if AutoKenModule then AutoKenModule:SetAutoKen(Config.AutoKenEnabled) end
-    end)
-    pcall(function()
-        if ZSkillModule then
-            ZSkillModule:SetZSkills(Config.ZSkills)
-            ZSkillModule:SetInfo(Config.TargetInfo)
-        end
-    end)
-    pcall(function()
-        if Config.FruitCheck then
-            if StartFruitNotifier then StartFruitNotifier() end
-        else
-            if StopFruitNotifier then StopFruitNotifier() end
-        end
-    end)
+    end
+
+    function SkillAimlockModule:SetDuration(duration)
+        LockDuration = duration
+    end
+
+    function SkillAimlockModule:SetMaxDistance(distance)
+        MaxDistance = distance
+    end
+
+    function SkillAimlockModule:UpdateConfig()
+        Enabled = Config.SkillAimlockEnabled
+        LockDuration = Config.SkillAimlockDuration or 1
+        -- تحديث حالة كل مهارة من Config
+        SkillsState.Z = Config.SkillZ or false
+        SkillsState.X = Config.SkillX or false
+        SkillsState.C = Config.SkillC or false
+        SkillsState.V = Config.SkillV or false
+        SkillsState.F = Config.SkillF or false
+    end
     
-    -- خط إضافي: تحديث موديل المهارات إذا كان موجوداً
-    pcall(function()
-        if SkillAimlockModule and SkillAimlockModule.UpdateConfig then
-            SkillAimlockModule:UpdateConfig()
-        end
+    -- دالة لجلب الحالة الحالية (للـ GUI)
+    function SkillAimlockModule:GetSkillState(skill)
+        return SkillsState[skill] or false
+    end
+
+    -- ربط تغيير الشخصية
+    LocalPlayer.CharacterAdded:Connect(function(newChar)
+        char = newChar
+        stopAimlock()
     end)
 end
 
--- ... (باقي الكود الأصلي يبقى كما هو، بما في ذلك إنشاء GUI والأزرار) ...
-
--- ============================================================================
--- ██ FIX 3: ربط أزرار المهارات في الـ GUI بحفظ الإعدادات (DelayedSave)
--- ============================================================================
--- داخل GUI، أزرار المهارات هي التي تقوم بتغيير Config.SkillX ثم تستدعي DelayedSave()
--- هذا الجزء موجود بالفعل في الكود الأصلي ويعمل بشكل صحيح. لا داعي لتغييره.
--- مثال:
--- makeSkillButton(row1, "Z", 0.03) -- هذا الكائن يقوم بتحديث Config.SkillZ و DelayedSave()
-
-print("[ARAKS HUB] SYSTEM FIXED - Skill Aimlock settings will now save correctly!")
+return SkillAimlockModule
