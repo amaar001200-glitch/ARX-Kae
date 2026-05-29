@@ -139,13 +139,13 @@ do
 
     function SkillAimlockModule:SetEnabled(state)
         Enabled = state
-
+        -- حفظ الحالة في Config
+        Config.SkillAimlockEnabled = state
         if not state then
             stopAimlock()
         end
     end
 
-    -- [السطر الوحيد المضافة] تم تفعيل هذه الدالة
     function SkillAimlockModule:SetSkill(skill, state)
         Config["Skill" .. skill] = state
     end
@@ -160,8 +160,11 @@ do
 
     function SkillAimlockModule:UpdateConfig()
         Enabled = Config.SkillAimlockEnabled
-        LockDuration = Config.SkillAimlockDuration
+        LockDuration = Config.SkillAimlockDuration or 1
     end
+
+    -- تحديث الإعدادات من Config عند بدء التشغيل
+    SkillAimlockModule:UpdateConfig()
 
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         char = newChar
