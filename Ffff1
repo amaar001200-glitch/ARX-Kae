@@ -1,98 +1,3 @@
---// ARX LIGHT DEFENSE
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local FLAGS = 0
-local DESTROYED = false
-local function flag(reason)
-    FLAGS += 1
-    warn("[ARX DETECT]: "..tostring(reason))
-end
-local function stop(reason)
-    if DESTROYED then
-        return
-    end
-    DESTROYED = true
-    warn("[ARX SECURITY]: "..tostring(reason))
-    pcall(function()
-        LocalPlayer:Kick(
-            "\n🛡️ ARX Security Triggered 🛡️\n\n"..tostring(reason)
-        )
-    end)
-    while true do
-        task.wait(9e9)
-    end
-end
---==================================================
--- ANTI LOADSTRING HOOK
---==================================================
-task.spawn(function()
-    local old = loadstring
-    while task.wait(3) do
-        if loadstring ~= old then
-            flag("loadstring modified")
-        end
-    end
-end)
---==================================================
--- ANTI COMMON TOOLS
---==================================================
-task.spawn(function()
-    local bad = {
-        "SimpleSpy",
-        "Hydroxide",
-        "Dex",
-        "RemoteSpy",
-        "CMD-X",
-        "InfiniteYield"
-    }
-    while task.wait(5) do
-        for _,tool in ipairs(bad) do
-            if rawget(getgenv(), tool) then
-                flag(tool)
-            end
-        end
-    end
-end)
---==================================================
--- ANTI DEBUG ENV
---==================================================
-task.spawn(function()
-    while task.wait(4) do
-        local ok = pcall(function()
-            return debug.getinfo(loadstring)
-        end)
-        if not ok then
-            flag("debug modified")
-        end
-    end
-end)
---==================================================
--- TOO MANY FLAGS
---==================================================
-task.spawn(function()
-    while task.wait(2) do
-        if FLAGS >= 3 then
-            stop("Unauthorized Environment")
-        end
-    end
-end)
-print("[ARX] Defense Loaded")
-``
-    ================================================================
-    [ SCRIPT INFORMATION ]
-    Project: Custom Script
-    Author: ARX HUB
-    YouTube: https://youtube.com/@araks01?si=HslZdVmI0yefg2hA
-    
-    [ TERMS AND CONDITIONS ]
-    - You ARE allowed to use and modify this script for your own games.
-    - You ARE NOT allowed to re-upload, redistribute, or claim 
-      ownership of this script.
-    - Removing or altering these credits is strictly prohibited.
-    
-    Copyright (c) 2026 ARX. All rights reserved.
-    ================================================================
-]]
 local Config = {
     -- [1] PlatoBoost Settings
     ServiceId = 23585,
@@ -125,7 +30,140 @@ local Config = {
     HubName = "ARX Key",
     HubDescription = "ARX Key"
 }
--------------------------------------------------------------------------------
+
+--// =====================================================
+--// ARX LIGHT PROTECTION
+--// =====================================================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local FLAGS = 0
+local DESTROYED = false
+
+local function flag(reason)
+
+    FLAGS += 1
+    warn("[ARX DETECT]: "..tostring(reason))
+
+end
+
+local function stop(reason)
+
+    if DESTROYED then
+        return
+    end
+
+    DESTROYED = true
+
+    warn("[ARX SECURITY]: "..tostring(reason))
+
+    pcall(function()
+
+        LocalPlayer:Kick(
+            "\n🛡️ ARX Security Triggered 🛡️\n\n"..tostring(reason)
+        )
+
+    end)
+
+    while true do
+        task.wait(9e9)
+    end
+
+end
+
+--==================================================
+-- ANTI COMMON TOOLS
+--==================================================
+
+task.spawn(function()
+
+    local bad = {
+        "SimpleSpy",
+        "Hydroxide",
+        "RemoteSpy",
+        "CMD-X"
+    }
+
+    while task.wait(6) do
+
+        for _,tool in ipairs(bad) do
+
+            if rawget(getgenv(), tool) then
+                flag(tool)
+            end
+
+        end
+
+    end
+
+end)
+
+--==================================================
+-- LOADSTRING CHECK
+--==================================================
+
+task.spawn(function()
+
+    local old = loadstring
+
+    while task.wait(8) do
+
+        if typeof(loadstring) ~= "function" then
+            flag("loadstring invalid")
+        end
+
+        if loadstring ~= old then
+            flag("loadstring modified")
+        end
+
+    end
+
+end)
+
+--==================================================
+-- ENVIRONMENT CHECK
+--==================================================
+
+task.spawn(function()
+
+    while task.wait(7) do
+
+        local ok = pcall(function()
+            return game:GetService("CoreGui")
+        end)
+
+        if not ok then
+            flag("environment modified")
+        end
+
+    end
+
+end)
+
+--==================================================
+-- MAX FLAGS
+--==================================================
+
+task.spawn(function()
+
+    while task.wait(2) do
+
+        if FLAGS >= 4 then
+            stop("Unauthorized Environment")
+        end
+
+    end
+
+end)
+
+print("[ARX] Protection Loaded")
+
+--// =====================================================
+--// END PROTECTION
+--// =====================================================
+
+------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --! json library
 --! cryptography library
