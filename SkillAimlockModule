@@ -24,9 +24,6 @@ do
     local aimlockActive = false
     local aimRenderConn = nil
     local aimTimeoutTask = nil
-    
-    -- [الإضافة رقم 1] جدول لتخزين حالة المهارات
-    local SkillsState = {}
 
     local function getNearestTarget()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -124,8 +121,7 @@ do
                 if typeof(a1) == "string" then
                     local skillKey = a1:upper()
 
-                    -- [التعديل] استخدام SkillsState بدلاً من Config
-                    if SkillsState[skillKey] then
+                    if Config["Skill" .. skillKey] then
                         task.spawn(function()
                             local target = getNearestTarget()
 
@@ -149,9 +145,9 @@ do
         end
     end
 
-    -- [الإضافة رقم 2] تفعيل دالة SetSkill
+    -- [السطر الوحيد المضافة] تم تفعيل هذه الدالة
     function SkillAimlockModule:SetSkill(skill, state)
-        SkillsState[skill] = state
+        Config["Skill" .. skill] = state
     end
 
     function SkillAimlockModule:SetDuration(duration)
