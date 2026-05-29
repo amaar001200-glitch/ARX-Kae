@@ -1,0 +1,158 @@
+return function(env)
+
+local Config = env.Config
+
+-- █ MODULE: SKILL AIMLOCK
+local SkillAimlockModule = {}
+
+do
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Workspace = game:GetService("Workspace")
+    local RunService = game:GetService("RunService")
+    local Camera = workspace.CurrentCamera
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+    local Enabled = false
+    local LockDuration = 1.0
+    local MaxDistance = 300
+
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local aimlockActive = false
+    local aimRenderConn = nil
+    local aimTimeoutTask = nil
+    local currentTool = nil
+
+    local function getNearestTarget()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
+            return nil
+        end
+
+        local nearest = nil
+        local shortest = MaxDistance
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
+                local h = p.Character:FindFirstChildOfClass("Humanoid")
+
+                if ehrp and h and h.Health > 0 then
+                    local dist = (ehrp.Position - hrp.Position).Magnitude
+
+                    if dist < shortest then
+                        shortest = dist
+                        nearest = ehrp.Parent
+                    end
+                end
+            end
+        end
+
+        return nearest
+    end
+
+    local function stopAimlock()
+        if not aimlockActive then
+            return
+        end
+
+        aimlockActive = false
+
+        if aimRenderConn then
+            aimRenderConn:Disconnect()
+            aimRenderConn = nil
+        end
+
+        if aimTimeoutTask then
+            task.cancel(aimTimeoutTask)
+            aimTimeoutTask = nil
+        end
+    end
+
+    local function startAimlock(target)
+        if not Enabled or aimlockActive or not target then
+            return
+        end
+
+        if not target:FindFirstChild("HumanoidRootPart") then
+            return
+        end
+
+        aimlockActive = true
+
+        aimRenderConn = RunService.RenderStepped:Connect(function()
+            if not Enabled or not aimlockActive then
+                stopAimlock()
+                return
+            end
+
+            local targetHRP = target and target:FindFirstChild("HumanoidRootPart")
+
+            if targetHRP then
+                local camPos = Camera.CFrame.Position
+                Camera.CFrame = CFrame.new(camPos, targetHRP.Position)
+            else
+                stopAimlock()
+            end
+        end)
+
+        aimTimeoutTask = task.delay(LockDuration, function()
+            stopAimlock()
+        end)
+    end
+
+    if not getgenv().SkillAimlock_Hooked then
+        getgenv().SkillAimlock_Hooked = true
+
+        local oldNamecall
+
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+
+            if (method == "InvokeServer" or method == "FireServer") and Enabled then
+                local a1 = args[1]
+
+                if typeof(a1) == "string" then
+                    local skillKey = a1:upper()
+
+                    if Config["Skill" .. skillKey] then
+                        task.spawn(function()
+                            local target = getNearestTarget()
+
+                            if target then
+                                startAimlock(target)
+                            end
+                        end)
+                    end
+                end
+            end
+
+            return oldNamecall(self, ...)
+        end)
+    end
+
+    function SkillAimlockModule:SetEnabled(state)
+        Enabled = state
+
+        if not state then
+            stopAimlock()
+        end
+    end
+
+    function SkillAimlockModule:SetSkill(skill, state)
+    end
+
+    function SkillAimlockModule:SetDuration(duration)
+        LockDuration = duration
+    end
+
+    function SkillAimlockModule:SetMaxDistance(distance)
+        MaxDistance = distance
+    end
+
+    function SkillAimlockModule:UpdateConfig()
+        Enabled = Config.SkillAimlockEnabled
+        LockDuration = Config.SkillAimlockDuration
+    end
