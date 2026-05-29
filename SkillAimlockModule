@@ -1,4 +1,10 @@
--- █ MODULE: SKILL AIMLOCK (FIXED - مع حفظ المهارات)
+-- █ MODULE: SKILL AIMLOCK
+
+return function(env)
+
+local Config = env.Config
+
+-- █ MODULE: SKILL AIMLOCK
 local SkillAimlockModule = {}
 
 do
@@ -12,24 +18,22 @@ do
     local Enabled = false
     local LockDuration = 1.0
     local MaxDistance = 300
-    
-    -- جدول لتخزين حالة كل مهارة
-    local SkillsState = {
-        Z = false,
-        X = false,
-        C = false,
-        V = false,
-        F = false,
-    }
 
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
     local aimlockActive = false
     local aimRenderConn = nil
     local aimTimeoutTask = nil
+    
+    -- [الإضافة رقم 1] جدول لتخزين حالة المهارات
+    local SkillsState = {}
 
     local function getNearestTarget()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil end
+
+        if not hrp then
+            return nil
+        end
 
         local nearest = nil
         local shortest = MaxDistance
@@ -38,8 +42,10 @@ do
             if p ~= LocalPlayer and p.Character then
                 local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
+
                 if ehrp and h and h.Health > 0 then
                     local dist = (ehrp.Position - hrp.Position).Magnitude
+
                     if dist < shortest then
                         shortest = dist
                         nearest = p.Character
@@ -47,16 +53,22 @@ do
                 end
             end
         end
+
         return nearest
     end
 
     local function stopAimlock()
-        if not aimlockActive then return end
+        if not aimlockActive then
+            return
+        end
+
         aimlockActive = false
+
         if aimRenderConn then
             aimRenderConn:Disconnect()
             aimRenderConn = nil
         end
+
         if aimTimeoutTask then
             task.cancel(aimTimeoutTask)
             aimTimeoutTask = nil
@@ -64,17 +76,26 @@ do
     end
 
     local function startAimlock(target)
-        if not Enabled or aimlockActive or not target then return end
+        if not Enabled or aimlockActive or not target then
+            return
+        end
+
         local targetHRP = target:FindFirstChild("HumanoidRootPart")
-        if not targetHRP then return end
+
+        if not targetHRP then
+            return
+        end
 
         aimlockActive = true
+
         aimRenderConn = RunService.RenderStepped:Connect(function()
             if not Enabled or not aimlockActive then
                 stopAimlock()
                 return
             end
+
             local hrp = target:FindFirstChild("HumanoidRootPart")
+
             if hrp then
                 local camPos = Camera.CFrame.Position
                 Camera.CFrame = CFrame.new(camPos, hrp.Position)
@@ -88,43 +109,49 @@ do
         end)
     end
 
-    -- Hook للكشف عن استخدام المهارات
     if not getgenv().SkillAimlock_Hooked then
         getgenv().SkillAimlock_Hooked = true
+
         local oldNamecall
+
         oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
-            
+
             if (method == "InvokeServer" or method == "FireServer") and Enabled then
                 local a1 = args[1]
+
                 if typeof(a1) == "string" then
                     local skillKey = a1:upper()
-                    -- التحقق من تفعيل المهارة من الجدول
+
+                    -- [التعديل] استخدام SkillsState بدلاً من Config
                     if SkillsState[skillKey] then
                         task.spawn(function()
                             local target = getNearestTarget()
-                            if target then startAimlock(target) end
+
+                            if target then
+                                startAimlock(target)
+                            end
                         end)
                     end
                 end
             end
+
             return oldNamecall(self, ...)
         end)
     end
 
-    -- دوال عامة للموديل
     function SkillAimlockModule:SetEnabled(state)
         Enabled = state
-        if not state then stopAimlock() end
+
+        if not state then
+            stopAimlock()
+        end
     end
 
-    -- هذه الدالة أصبحت تعمل الآن بشكل صحيح
+    -- [الإضافة رقم 2] تفعيل دالة SetSkill
     function SkillAimlockModule:SetSkill(skill, state)
-        if skill and SkillsState[skill] ~= nil then
-            SkillsState[skill] = state
-            print("[SkillAimlock] " .. skill .. " = " .. tostring(state))
-        end
+        SkillsState[skill] = state
     end
 
     function SkillAimlockModule:SetDuration(duration)
@@ -137,21 +164,9 @@ do
 
     function SkillAimlockModule:UpdateConfig()
         Enabled = Config.SkillAimlockEnabled
-        LockDuration = Config.SkillAimlockDuration or 1
-        -- تحديث حالة كل مهارة من Config
-        SkillsState.Z = Config.SkillZ or false
-        SkillsState.X = Config.SkillX or false
-        SkillsState.C = Config.SkillC or false
-        SkillsState.V = Config.SkillV or false
-        SkillsState.F = Config.SkillF or false
-    end
-    
-    -- دالة لجلب الحالة الحالية (للـ GUI)
-    function SkillAimlockModule:GetSkillState(skill)
-        return SkillsState[skill] or false
+        LockDuration = Config.SkillAimlockDuration
     end
 
-    -- ربط تغيير الشخصية
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         char = newChar
         stopAimlock()
@@ -159,3 +174,5 @@ do
 end
 
 return SkillAimlockModule
+
+end
