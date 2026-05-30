@@ -1,89 +1,105 @@
--- // █ MODULE: FPS BOOST
+-- █ MODULE: FPS & PING DISPLAY
 
-return function(shared)
+return function(env)
+    local Config = env.Config
+    local LocalPlayer = env.LocalPlayer
+    local RunService = env.RunService
+    local Stats = env.Stats
 
-    local Config = shared.Config
-    local Lighting = game:GetService("Lighting")
-    local Workspace = game:GetService("Workspace")
+    local FPSGui = nil
+    local FPSConnection = nil
+    local FPSLabel = nil
 
-    local FpsBoostConnection = nil
-    local lastDescendantProcess = 0
+    local function CreateDisplay()
+        if FPSGui then
+            pcall(function() FPSGui:Destroy() end)
+            FPSGui = nil
+        end
+        if FPSConnection then
+            pcall(function() FPSConnection:Disconnect() end)
+            FPSConnection = nil
+        end
+
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "ARAKS_FPS_GUI"
+        gui.ResetOnSpawn = false
+        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+        local label = Instance.new("TextLabel", gui)
+        label.Size = UDim2.new(0, 160, 0, 25)
+        label.Position = UDim2.new(1, -170, 0, 10)
+        label.AnchorPoint = Vector2.new(1, 0)
+        label.BackgroundTransparency = 1
+        label.Text = "FPS: 0 | Ping: 0ms"
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = Color3.fromRGB(0, 255, 0)
+
+        local frameCount = 0
+        local lastTime = tick()
+
+        local conn = RunService.RenderStepped:Connect(function()
+            if not gui or not gui.Parent then return end
+            frameCount = frameCount + 1
+            if tick() - lastTime >= 1 then
+                local fps = frameCount
+                frameCount = 0
+                lastTime = tick()
+                local ping = 0
+                pcall(function()
+                    ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+                end)
+                label.Text = string.format("FPS: %d  |  Ping: %dms", fps, ping)
+                if fps >= 50 then
+                    label.TextColor3 = Color3.fromRGB(0, 255, 0)
+                elseif fps >= 30 then
+                    label.TextColor3 = Color3.fromRGB(255, 255, 0)
+                else
+                    label.TextColor3 = Color3.fromRGB(255, 0, 0)
+                end
+            end
+        end)
+
+        FPSGui = gui
+        FPSConnection = conn
+        FPSLabel = label
+    end
+
+    local function DestroyDisplay()
+        if FPSConnection then
+            FPSConnection:Disconnect()
+            FPSConnection = nil
+        end
+        if FPSGui then
+            FPSGui:Destroy()
+            FPSGui = nil
+        end
+        FPSLabel = nil
+    end
 
     local module = {}
 
-    function module.ApplySettings()
-        if not Config.FpsBoost then return end
-        
-        Lighting.FogEnd = 1e9
-        Lighting.FogStart = 1e9
-        Lighting.ClockTime = 12
-        Lighting.GlobalShadows = false
-        Lighting.Brightness = 2
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-
-        local Terrain = Workspace:FindFirstChildOfClass("Terrain")
-        if Terrain then
-            Terrain.WaterWaveSize = 0
-            Terrain.WaterWaveSpeed = 0
-            Terrain.WaterReflectance = 0
-            Terrain.WaterTransparency = 1
-        end
-
-        for _, v in ipairs(Workspace:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.Material = Enum.Material.SmoothPlastic
-                v.Reflectance = 0
-                v.CastShadow = false
-            elseif v:IsA("ParticleEmitter") then
-                v.Lifetime = NumberRange.new(0, 0)
-            elseif v:IsA("Fire") or v:IsA("Smoke") then
-                v.Enabled = false
-            end
-        end
-    end
-
     function module.Start()
-        if FpsBoostConnection then
-            FpsBoostConnection:Disconnect()
+        if Config.FpsPingDisplay then
+            CreateDisplay()
         end
-
-        module.ApplySettings()
-
-        FpsBoostConnection = Workspace.DescendantAdded:Connect(function(v)
-            if not Config.FpsBoost then return end
-            
-            local now = tick()
-            if now - lastDescendantProcess < 0.05 then return end
-            lastDescendantProcess = now
-
-            if v:IsA("ParticleEmitter") then
-                v.Lifetime = NumberRange.new(0, 0)
-            elseif v:IsA("BasePart") then
-                v.CastShadow = false
-            elseif v:IsA("Fire") or v:IsA("Smoke") then
-                v.Enabled = false
-            end
-        end)
     end
 
     function module.Stop()
-        if FpsBoostConnection then
-            FpsBoostConnection:Disconnect()
-            FpsBoostConnection = nil
-        end
+        DestroyDisplay()
     end
 
     function module.Update()
-        if Config.FpsBoost then
-            module.Start()
+        if Config.FpsPingDisplay then
+            CreateDisplay()
         else
-            module.Stop()
+            DestroyDisplay()
         end
     end
 
     -- بدء التشغيل إذا كان مفعلاً في الإعدادات
-    if Config.FpsBoost then
-        module.Start()
+    if Config.FpsPingDisplay then
+        CreateDisplay()
     end
 
     return module
