@@ -1,5 +1,5 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM)
--- version 1.1 (Fixed - No conflicts)
+-- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM + SKILLS)
+-- version 1.2 (Fixed - Skills working)
 
 local AutoHuntModule = {}
 
@@ -15,10 +15,15 @@ do
     local RegisterAttack = Net and Net["RE/RegisterAttack"]
     local RegisterHit = Net and Net["RE/RegisterHit"]
     
-    -- بيانات AutoHunt (داخل الموديل فقط)
+    -- بيانات AutoHunt
     local Enabled = false
     local KillNearest = false
     local SelectedPlayer = nil
+    local SkillBusy = false
+    
+    -- مفاتيح المهارات
+    local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+    local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
     
     -- متغيرات التشغيل
     local currentTween = nil
@@ -35,12 +40,28 @@ do
     platform.Parent = workspace
     platform.CFrame = CFrame.new(0, -1000, 0)
     
-    -- دوال داخلية للموديل فقط (بدون تعارض)
+    -- دوال داخلية
     local function IsAlive()
         local char = LocalPlayer.Character
         if not char then return false end
         local hum = char:FindFirstChild("Humanoid")
         return hum and hum.Health > 0
+    end
+    
+    local function TapKey(key)
+        if not IsAlive() then return end
+        VirtualInputManager:SendKeyEvent(true, key, false, game)
+        task.wait(0.018)
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    end
+    
+    local function UseSkill(skill)
+        if not IsAlive() then return end
+        TapKey(skill)
+        task.wait(0.04)
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then pcall(function() tool:Activate() end) end
+        task.wait(0.14)
     end
     
     local function GetNearestPlayer()
@@ -108,7 +129,47 @@ do
         return true
     end
     
-    -- لوب القتال الرئيسي (بدون مهارات لتجنب التعارض)
+    -- لوب المهارات (الحركة + ضرب المهارات)
+    task.spawn(function()
+        while true do
+            task.wait(0.35)
+            if not IsAlive() then continue end
+            
+            local target = nil
+            if KillNearest then
+                target = GetNearestPlayer()
+            elseif Enabled and SelectedPlayer then
+                target = SelectedPlayer
+            end
+            
+            if target and target.Character then
+                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
+                if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 20 then
+                    if not SkillBusy then
+                        SkillBusy = true
+                        pcall(function()
+                            -- تفعيل الهوت بار أولاً
+                            for _, slot in ipairs(HotbarKeys) do
+                                if not IsAlive() then break end
+                                TapKey(slot)
+                                task.wait(0.12)
+                                -- ضرب المهارات (Z, X, C, V, F)
+                                for _, skill in ipairs(SkillKeys) do
+                                    if not IsAlive() then break end
+                                    UseSkill(skill)
+                                end
+                                task.wait(0.06)
+                            end
+                        end)
+                        SkillBusy = false
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- لوب القتال الرئيسي (الحركة + الهجوم العادي)
     task.spawn(function()
         while true do
             task.wait()
@@ -140,7 +201,7 @@ do
         end
     end)
     
-    -- دوال عامة للتحكم (API)
+    -- دوال التحكم
     function AutoHuntModule:SetEnabled(state)
         Enabled = state
         if state then
