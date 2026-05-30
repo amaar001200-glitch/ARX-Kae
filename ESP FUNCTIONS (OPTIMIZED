@@ -1,0 +1,212 @@
+-- █ ESP FUNCTIONS (OPTIMIZED - Time-based updates using Shared Cache)
+
+return function(env)
+    local Config = env.Config
+    local LocalPlayer = env.LocalPlayer
+    local Players = env.Players
+    local Camera = env.Camera
+    local RunService = env.RunService
+    local Workspace = env.Workspace
+    local AdaptivePerformance = env.AdaptivePerformance
+
+    local Boxes = {}
+    local NameTags = {}
+    local HealthBars = {}
+    local LevelTags = {}
+    local DistTags = {}
+
+    local function CreateESP(plr)
+        if plr == LocalPlayer then return end
+        local Box = Drawing.new("Square")
+        Box.Thickness = 1
+        Box.Filled = false
+        Box.Color = Color3.fromRGB(255,0,0)
+        Box.Visible = false
+        
+        local NameTag = Drawing.new("Text")
+        NameTag.Size = 14
+        NameTag.Center = true
+        NameTag.Outline = true
+        NameTag.Color = Color3.new(1,1,1)
+        NameTag.Visible = false
+        
+        local HealthBar = Drawing.new("Square")
+        HealthBar.Thickness = 1
+        HealthBar.Filled = true
+        HealthBar.Color = Color3.fromRGB(0,255,0)
+        HealthBar.Visible = false
+        
+        local LevelTag = Drawing.new("Text")
+        LevelTag.Size = 13
+        LevelTag.Center = true
+        LevelTag.Outline = true
+        LevelTag.Color = Color3.fromRGB(255,255,0)
+        LevelTag.Visible = false
+        
+        local DistTag = Drawing.new("Text")
+        DistTag.Size = 13
+        DistTag.Center = true
+        DistTag.Outline = true
+        DistTag.Color = Color3.fromRGB(200,200,200)
+        DistTag.Visible = false
+        
+        Boxes[plr] = Box
+        NameTags[plr] = NameTag
+        HealthBars[plr] = HealthBar
+        LevelTags[plr] = LevelTag
+        DistTags[plr] = DistTag
+    end
+
+    local function RemoveESP(plr)
+        if Boxes[plr] then Boxes[plr]:Remove() Boxes[plr] = nil end
+        if NameTags[plr] then NameTags[plr]:Remove() NameTags[plr] = nil end
+        if HealthBars[plr] then HealthBars[plr]:Remove() HealthBars[plr] = nil end
+        if LevelTags[plr] then LevelTags[plr]:Remove() LevelTags[plr] = nil end
+        if DistTags[plr] then DistTags[plr]:Remove() DistTags[plr] = nil end
+    end
+
+    -- إنشاء ESP للاعبين الموجودين
+    for _, plr in pairs(Players:GetPlayers()) do CreateESP(plr) end
+    Players.PlayerAdded:Connect(CreateESP)
+    Players.PlayerRemoving:Connect(RemoveESP)
+
+    local FruitText = Drawing.new("Text")
+    FruitText.Size = 14
+    FruitText.Center = true
+    FruitText.Outline = true
+    FruitText.Color = Color3.fromRGB(0,255,100)
+    FruitText.Visible = false
+
+    local FruitNames = {"Rocket", "Spin", "Blade", "Spring", "Bomb", "Smoke", "Spike", "Flame", "Ice", "Sand", "Dark", "Eagle", "Diamond", "Light", "Rubber", "Ghost", "Magma", "Quake", "Buddha", "Love", "Creation", "Spider", "Sound", "Phoenix", "Portal", "Rumble", "Pain", "Blizzard", "Gravity", "Mammoth", "T-Rex", "Dough", "Shadow", "Venom", "Gas", "Spirit", "Leopard", "Yeti", "Kitsune", "Control", "Dragon"}
+
+    local ESPConnection = nil
+    local lastESPUpdate = 0
+    local lastFruitUpdate = 0
+    local cachedFruits = {}
+
+    local function StartESP()
+        if ESPConnection then ESPConnection:Disconnect(); ESPConnection = nil end
+        ESPConnection = RunService.RenderStepped:Connect(function()
+            local now = tick()
+            
+            local espInterval = 0.1 / AdaptivePerformance.ESPQuality
+            if now - lastESPUpdate < espInterval then return end
+            lastESPUpdate = now
+            
+            if not (Config.ESP_Box or Config.ESP_Name or Config.ESP_HealthBar or Config.ESP_Level or Config.ESP_Distance or Config.FruitESP) then return end
+
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
+                    local root = plr.Character.HumanoidRootPart
+                    local hum = plr.Character.Humanoid
+                    local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                    
+                    if onScreen then
+                        local sizeX = 2300 / pos.Z
+                        local sizeY = sizeX * 1.5
+                        local boxPos = Vector2.new(pos.X - sizeX/2, pos.Y - sizeY/2)
+                        
+                        if Config.ESP_Box and Boxes[plr] then
+                            Boxes[plr].Visible = true
+                            Boxes[plr].Size = Vector2.new(sizeX, sizeY)
+                            Boxes[plr].Position = boxPos
+                        elseif Boxes[plr] then Boxes[plr].Visible = false end
+                        
+                        if Config.ESP_HealthBar and HealthBars[plr] then
+                            local hpPercent = hum.Health / hum.MaxHealth
+                            HealthBars[plr].Visible = true
+                            HealthBars[plr].Size = Vector2.new(3, sizeY)
+                            HealthBars[plr].Position = Vector2.new(boxPos.X - 6, boxPos.Y)
+                            HealthBars[plr].Color = Color3.fromHSV(hpPercent * 0.3, 1, 1)
+                        elseif HealthBars[plr] then HealthBars[plr].Visible = false end
+                        
+                        if Config.ESP_Name and NameTags[plr] then
+                            NameTags[plr].Visible = true
+                            NameTags[plr].Text = plr.Name
+                            NameTags[plr].Position = Vector2.new(pos.X, boxPos.Y - 20)
+                        elseif NameTags[plr] then NameTags[plr].Visible = false end
+                        
+                        if Config.ESP_Level and LevelTags[plr] then
+                            local data = plr:FindFirstChild("Data") or plr:FindFirstChild("leaderstats")
+                            local lvl = data and (data:FindFirstChild("Level") or data:FindFirstChild("Mivai"))
+                            LevelTags[plr].Visible = true
+                            LevelTags[plr].Text = "Lv. " .. (lvl and lvl.Value or "???")
+                            LevelTags[plr].Position = Vector2.new(pos.X, boxPos.Y - 35)
+                        elseif LevelTags[plr] then LevelTags[plr].Visible = false end
+                        
+                        if Config.ESP_Distance and DistTags[plr] and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                            local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - root.Position).Magnitude)
+                            DistTags[plr].Visible = true
+                            DistTags[plr].Text = "[" .. dist .. "m]"
+                            DistTags[plr].Position = Vector2.new(pos.X, boxPos.Y + sizeY + 5)
+                        elseif DistTags[plr] then DistTags[plr].Visible = false end
+                    else
+                        if Boxes[plr] then Boxes[plr].Visible = false end
+                        if NameTags[plr] then NameTags[plr].Visible = false end
+                        if HealthBars[plr] then HealthBars[plr].Visible = false end
+                        if LevelTags[plr] then LevelTags[plr].Visible = false end
+                        if DistTags[plr] then DistTags[plr].Visible = false end
+                    end
+                else
+                    if Boxes[plr] then Boxes[plr].Visible = false end
+                    if NameTags[plr] then NameTags[plr].Visible = false end
+                    if HealthBars[plr] then HealthBars[plr].Visible = false end
+                    if LevelTags[plr] then LevelTags[plr].Visible = false end
+                    if DistTags[plr] then DistTags[plr].Visible = false end
+                end
+            end
+            
+            if Config.FruitESP then
+                local fruitInterval = AdaptivePerformance.ScannerInterval
+                if now - lastFruitUpdate > fruitInterval then
+                    cachedFruits = {}
+                    for _, v in pairs(Workspace:GetChildren()) do
+                        if v:IsA("Tool") then
+                            for _, fruitName in ipairs(FruitNames) do
+                                if string.find(string.lower(v.Name), string.lower(fruitName)) then
+                                    cachedFruits[#cachedFruits + 1] = v
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    lastFruitUpdate = now
+                end
+                
+                local found = false
+                for _, v in ipairs(cachedFruits) do
+                    if v and v.Parent then
+                        local handle = v:FindFirstChild("Handle") or v
+                        local pos, onScreen = Camera:WorldToViewportPoint(handle.Position)
+                        if onScreen then
+                            local dist = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and math.floor((LocalPlayer.Character.HumanoidRootPart.Position - handle.Position).Magnitude) or 0
+                            FruitText.Text = " " .. v.Name .. " [" .. dist .. "m]"
+                            FruitText.Position = Vector2.new(pos.X, pos.Y)
+                            FruitText.Visible = true
+                            found = true
+                            break
+                        end
+                    end
+                end
+                if not found then FruitText.Visible = false end
+            else
+                FruitText.Visible = false
+            end
+        end)
+    end
+
+    StartESP()
+
+    -- إرجاع دوال للتحكم إذا احتجتها لاحقاً
+    return {
+        Stop = function()
+            if ESPConnection then
+                ESPConnection:Disconnect()
+                ESPConnection = nil
+            end
+        end,
+        Update = function()
+            StartESP()
+        end
+    }
+end
