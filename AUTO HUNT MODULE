@@ -1,12 +1,11 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM)
--- version 1.0
+-- version 1.1 (Fixed - No conflicts)
 
 local AutoHuntModule = {}
 
 do
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
-    local RunService = game:GetService("RunService")
     local TweenService = game:GetService("TweenService")
     local VirtualInputManager = game:GetService("VirtualInputManager")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,17 +15,13 @@ do
     local RegisterAttack = Net and Net["RE/RegisterAttack"]
     local RegisterHit = Net and Net["RE/RegisterHit"]
     
-    -- بيانات AutoHunt
-    local AutoHunt = {
-        Enabled = false,
-        KillNearest = false,
-        SelectedPlayer = nil,
-    }
+    -- بيانات AutoHunt (داخل الموديل فقط)
+    local Enabled = false
+    local KillNearest = false
+    local SelectedPlayer = nil
     
     -- متغيرات التشغيل
-    local CombatRunning = false
     local currentTween = nil
-    local SkillBusy = false
     
     -- المنصة
     local platform = Instance.new("Part")
@@ -40,11 +35,7 @@ do
     platform.Parent = workspace
     platform.CFrame = CFrame.new(0, -1000, 0)
     
-    -- مفاتيح المهارات
-    local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
-    local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
-    
-    -- دوال مساعدة
+    -- دوال داخلية للموديل فقط (بدون تعارض)
     local function IsAlive()
         local char = LocalPlayer.Character
         if not char then return false end
@@ -52,23 +43,6 @@ do
         return hum and hum.Health > 0
     end
     
-    local function TapKey(key)
-        if not IsAlive() then return end
-        VirtualInputManager:SendKeyEvent(true, key, false, game)
-        task.wait(0.018)
-        VirtualInputManager:SendKeyEvent(false, key, false, game)
-    end
-    
-    local function UseSkill(skill)
-        if not IsAlive() then return end
-        TapKey(skill)
-        task.wait(0.04)
-        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-        if tool then pcall(function() tool:Activate() end) end
-        task.wait(0.14)
-    end
-    
-    -- إيجاد أقرب لاعب
     local function GetNearestPlayer()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -92,7 +66,6 @@ do
         return nearest
     end
     
-    -- الحصول على Session ID
     local function GetSessionID()
         local ok, result = pcall(function()
             local SendHitsToServer = getrenv()._G.SendHitsToServer
@@ -102,7 +75,6 @@ do
         return ok and result or ""
     end
     
-    -- تنفيذ الهجوم
     local function Attack(target)
         if not target or not target:FindFirstChild("HumanoidRootPart") then return end
         if RegisterAttack and RegisterHit then
@@ -113,7 +85,6 @@ do
         end
     end
     
-    -- التحرك نحو الهدف
     local function MoveToEnemy(targetChar, hrp)
         if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then
             platform.CFrame = CFrame.new(0, -1000, 0)
@@ -137,54 +108,22 @@ do
         return true
     end
     
-    -- لوب المهارات
-    task.spawn(function()
-        while true do
-            task.wait(0.35)
-            if not IsAlive() then continue end
-            
-            local target = nil
-            if AutoHunt.KillNearest then
-                target = GetNearestPlayer()
-            elseif AutoHunt.Enabled and AutoHunt.SelectedPlayer then
-                target = AutoHunt.SelectedPlayer
-            end
-            
-            if target and target.Character then
-                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
-                if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 20 then
-                    if not SkillBusy then
-                        SkillBusy = true
-                        pcall(function()
-                            for _, slot in ipairs(HotbarKeys) do
-                                if not IsAlive() then break end
-                                TapKey(slot)
-                                task.wait(0.12)
-                                for _, skill in ipairs(SkillKeys) do
-                                    if not IsAlive() then break end
-                                    UseSkill(skill)
-                                end
-                                task.wait(0.06)
-                            end
-                        end)
-                        SkillBusy = false
-                    end
-                end
-            end
-        end
-    end)
-    
-    -- لوب القتال الرئيسي
+    -- لوب القتال الرئيسي (بدون مهارات لتجنب التعارض)
     task.spawn(function()
         while true do
             task.wait()
-            local huntTarget = nil
-            if AutoHunt.KillNearest then
-                huntTarget = GetNearestPlayer()
-            elseif AutoHunt.Enabled and AutoHunt.SelectedPlayer then
-                huntTarget = AutoHunt.SelectedPlayer
+            if not IsAlive() then 
+                platform.CFrame = CFrame.new(0, -1000, 0)
+                continue 
             end
+            
+            local huntTarget = nil
+            if KillNearest then
+                huntTarget = GetNearestPlayer()
+            elseif Enabled and SelectedPlayer then
+                huntTarget = SelectedPlayer
+            end
+            
             if huntTarget and huntTarget.Character then
                 local enemy = huntTarget.Character
                 local humanoid = enemy:FindFirstChild("Humanoid")
@@ -201,9 +140,12 @@ do
         end
     end)
     
-    -- دوال عامة للتحكم
+    -- دوال عامة للتحكم (API)
     function AutoHuntModule:SetEnabled(state)
-        AutoHunt.Enabled = state
+        Enabled = state
+        if state then
+            KillNearest = false
+        end
         if not state then
             if currentTween then pcall(function() currentTween:Cancel() end) end
             currentTween = nil
@@ -212,9 +154,9 @@ do
     end
     
     function AutoHuntModule:SetKillNearest(state)
-        AutoHunt.KillNearest = state
+        KillNearest = state
         if state then
-            AutoHunt.Enabled = false
+            Enabled = false
         end
         if not state then
             if currentTween then pcall(function() currentTween:Cancel() end) end
@@ -224,19 +166,19 @@ do
     end
     
     function AutoHuntModule:SetSelectedPlayer(player)
-        AutoHunt.SelectedPlayer = player
-        AutoHunt.KillNearest = false
+        SelectedPlayer = player
+        KillNearest = false
     end
     
     function AutoHuntModule:GetSelectedPlayer()
-        return AutoHunt.SelectedPlayer
+        return SelectedPlayer
     end
     
     function AutoHuntModule:GetState()
         return {
-            Enabled = AutoHunt.Enabled,
-            KillNearest = AutoHunt.KillNearest,
-            SelectedPlayer = AutoHunt.SelectedPlayer
+            Enabled = Enabled,
+            KillNearest = KillNearest,
+            SelectedPlayer = SelectedPlayer
         }
     end
     
@@ -244,8 +186,8 @@ do
         if currentTween then pcall(function() currentTween:Cancel() end) end
         currentTween = nil
         platform.CFrame = CFrame.new(0, -1000, 0)
-        AutoHunt.Enabled = false
-        AutoHunt.KillNearest = false
+        Enabled = false
+        KillNearest = false
     end
 end
 
