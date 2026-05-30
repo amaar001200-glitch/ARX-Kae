@@ -14,49 +14,38 @@
     Copyright (c) 2026 ARX. All rights reserved.
     ================================================================
 ]]
-
--- ████████████████████████████████████████████████████████████████████████████████
--- █ PROTECTION: LOADER SELF-DEFENSE (حماية سكريبت التحميل من التفريغ)
--- ████████████████████████████████████████████████████████████████████████████████
-
--- 1. منع التشغيل إذا تم تفريغ السكريبت
-local function AntiDump()
-    local info = debug.getinfo(1)
-    if info and info.source then
-        if info.source:find("DumpedScripts") or 
-           info.source:find("dump") or 
-           info.source:find("deobfuscated") or
-           info.source:find("extracted") then
-            error("[PROTECTION] Dumped loader detected - Execution stopped")
-            return false
-        end
-    end
-    return true
-end
-
-if not AntiDump() then return end
-
-print("[PROTECTION] Loader protected successfully")
-
--- Config
 local Config = {
+    -- [1] PlatoBoost Settings
     ServiceId = 23585,
     PlatoSecret = "3b35e42d-0967-4cf4-9bb0-4c4fbe98aa80",
+
+    -- [2] Anti-Bypass / Global Secret Variable
     Secret = "Amaartyu7",
-    MainScriptURL = "https://pastefy.app/HwRTmUzP/raw",
+
+    -- [3] Scripts & Links
+    MainScriptURL = "https://pastefy.app/BtUUNgQn/raw",
+
+    -- [4] Social Media Settings
     ShowDiscord = false,
     DiscordURL = "https://discord.gg/kT55J724BK",
+
     ShowInstagram = false,
     InstagramURL = "https://www.instagram.com/oyb0i/",
+
     ShowYoutube = false,
     YoutubeURL = "https://www.youtube.com/channel/UCAlXXV1Hbvf7WbfXARuVtiQ",
+
+    -- [5] File System
     KeyFileName = "Mykey.txt",
+
+    -- [6] GUI Management
     OldGuiName = "ARXHUB",
     MainGuiName = "ARXHUB",
+
+    -- [7] Hub Information & UI Text
     HubName = "ARX Key",
     HubDescription = "ARX Key"
 }
-
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --! json library
@@ -165,15 +154,7 @@ local function StartMainScript()
     end
     
     _G[Config.Secret] = true 
-    
-    -- حماية إضافية: التحقق من أن السكريبت يتم تشغيله من الـ Loader فقط
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet(Config.MainScriptURL))()
-    end)
-    
-    if not success then
-        error("[PROTECTION] Failed to load core script")
-    end
+    loadstring(game:HttpGet(Config.MainScriptURL))()
 end
 
 local function CreateGUI()
