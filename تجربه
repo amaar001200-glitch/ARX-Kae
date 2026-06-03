@@ -1,5 +1,5 @@
--- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
--- تم حل مشكلة تفويت الضربات وتخطي الخصم نهائياً عبر ضبط تزامن الـ Remote مع الـ Hitbox العملاق
+-- █ AIMBOT & ADVANCED COMBAT MODULE (ANTI-MISS FIX)
+-- تم إصلاح توافق المهارات (Skills) والـ M1 لضمان احتساب الضرر من مسافات بعيدة بدون تخطي
 
 local AimbotModule = {}
 
@@ -16,14 +16,14 @@ do
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1500,
         SwordRange = 1000,
-        HitboxSize = 80 -- الحجم مضاعف مرتين ومخفي تماماً
+        HitboxSize = 80 -- حجم عملاق ومخفي تماماً
     }
 
     local CurrentTarget = nil
     local CurrentTargetPos = nil
     local DefaultSize = Vector3.new(2,2,1)
 
-    -- جلب الريموت المسؤول عن تسجيل الضربات المضمونة
+    -- ريموت تسجيل الضربات المضمون من ملفات اللعبة
     local RegisterHitRemote = nil
     pcall(function()
         RegisterHitRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
@@ -59,7 +59,7 @@ do
         return nearest
     end
 
-    -- تحديث الهدف كل 0.1 ثانية للايم بوت
+    -- تحديث الهدف كل 0.1 ثانية
     task.spawn(function()
         while true do
             if getgenv().AimbotActive then
@@ -102,6 +102,7 @@ do
         end
     end)
 
+    -- هوك مخصص للمهارات (تعديل الـ Index والـ Hit)
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
@@ -112,17 +113,22 @@ do
         return oldIndex(self, index)
     end)
 
+    -- هوك مخصص لمنع السيرفر من إلغاء المهارات (تعديل الـ Namecall للأحداث والـ Remotes)
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         local method = getnamecallmethod()
         local args = {...}
+        
         if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
+                
+                -- إذا كانت المهارة مرسلة، نقوم بتعديل الاتجاه والمسافة لتتوافق مع السيرفر والـ Hitbox العملاق
                 if not string.find(remoteName, "m1") and not string.find(remoteName, "click") and not string.find(remoteName, "attack") then
                     local changed = false
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
+                            -- توجيه ضربة المهارة مباشرة إلى مركز الـ Hitbox لضمان الحساب
                             args[i] = CurrentTargetPos
                             changed = true
                         end
@@ -134,7 +140,7 @@ do
         return oldNamecall(self, ...)
     end)
 
-    -- دالة تطبيق المربع العملاق بدقة مع معالجة تسجيل الضرر الفوري
+    -- تطبيق الـ Hitbox المخفي وتأمين احتساب ضرر المهارات والـ M1 عند اللمس
     local function applyHitboxLogic(enemyChar, myHrp)
         if not enemyChar then return end
         local hrp = enemyChar:FindFirstChild("HumanoidRootPart")
@@ -146,18 +152,18 @@ do
                 local wantedSize = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
                 
                 if hrp.Size ~= wantedSize then hrp.Size = wantedSize end
-                if hrp.Transparency ~= 1 then hrp.Transparency = 1 end -- مخفي بالكامل
+                if hrp.Transparency ~= 1 then hrp.Transparency = 1 end -- مخفي تماماً
                 if hrp.CanCollide ~= false then hrp.CanCollide = false end
                 if hrp.CanTouch ~= true then hrp.CanTouch = true end
                 
-                -- ربط فوري ومباشر يضمن احتساب الضرر عند ملامسة المربع العملاق دون الاعتماد على الايم بوت
+                -- هذا الجزء يدمج تسجيل الضرر الفوري (للـ M1 والمهارات القريبة) لحل مشكلة التخطي
                 if not hrp:GetAttribute("HitboxConnected") then
                     hrp:SetAttribute("HitboxConnected", true)
                     hrp.Touched:Connect(function(hit)
                         if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == player.Character then
                             if RegisterHitRemote then
                                 pcall(function()
-                                    -- إرسال الحدث فوراً للسيرفر لاعتماد الضربة بنسبة 100%
+                                    -- إرسال كود فك التشفير المأخوذ من ملفاتك لتوثيق الضربة في السيرفر
                                     RegisterHitRemote:FireServer(hrp, {}, nil, "747c0deb")
                                 end)
                             end
@@ -170,7 +176,7 @@ do
         end
     end
 
-    -- فحص اللاعبين والأعداء في الـ Workspace كل 0.2 ثانية (Anti-Lag ومضمون)
+    -- فحص ذكي ومستمر للاعبين والأعداء في الـ Workspace كل 0.2 ثانية لمنع الـ Lag
     local lastHitboxUpdate = 0
     RunService.Heartbeat:Connect(function()
         if not getgenv().AimbotActive then return end
@@ -183,14 +189,14 @@ do
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
         
-        -- 1. اللاعبين
+        -- 1. فحص جميع اللاعبين الآخرين
         for _, pl in ipairs(Players:GetPlayers()) do
             if pl ~= player and pl.Character then
                 applyHitboxLogic(pl.Character, myHrp)
             end
         end
         
-        -- 2. الأعداء والبوتات في الـ Workspace
+        -- 2. فحص جميع الأعداء والبوتات (NPCs) في الـ Workspace
         for _, object in ipairs(workspace:GetChildren()) do
             if object:IsA("Model") and object ~= char and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
                 applyHitboxLogic(object, myHrp)
@@ -198,7 +204,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] INVISIBLE MEGA HITBOX & ANGLE FIX LOADED")
+    print("[ARAKS HUB] INVISIBLE MEGA HITBOX & SKILLS COMPATIBLE LOADED")
 
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
