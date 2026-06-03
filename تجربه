@@ -1,5 +1,5 @@
 -- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
--- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام
+-- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام مع دمج فحص الأعداء وتكبير المربع 2X
 
 local AimbotModule = {}
 
@@ -16,7 +16,7 @@ do
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1500,
         SwordRange = 1000,
-        HitboxSize = 40 -- تم تعديل الحجم ليكون عملاق ومخفي بنفس الوقت
+        HitboxSize = 80 -- تم تكبير الحجم مرتين (Double Size) من 40 إلى 80 لنطاق ضرب هائل
     }
 
     local CurrentTarget = nil
@@ -42,6 +42,8 @@ do
         if not myHrp then return nil end
         local nearest = nil
         local nearestDist = AimbotConfig.MaxDistance
+        
+        -- فحص اللاعبين للايم بوت
         for _, pl in ipairs(Players:GetPlayers()) do
             if pl ~= player and pl.Character then
                 local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
@@ -133,56 +135,71 @@ do
         return oldNamecall(self, ...)
     end)
 
-    -- Update hitboxes every 0.2 seconds (optimized)
+    -- دالة مخصصة لتطبيق وتعديل الـ Hitbox ليكون مخفياً وعملاقاً وبدون تكرار يسبب لاق
+    local function applyHitboxLogic(enemyChar, myHrp)
+        if not enemyChar then return end
+        local hrp = enemyChar:FindFirstChild("HumanoidRootPart")
+        local hum = enemyChar:FindFirstChildOfClass("Humanoid")
+        
+        if hrp and hum and hum.Health > 0 then
+            local dist = (hrp.Position - myHrp.Position).Magnitude
+            if dist <= AimbotConfig.SwordRange then
+                local wantedSize = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                
+                -- تطبيق التعديلات (مخفي وعملاق)
+                if hrp.Size ~= wantedSize then hrp.Size = wantedSize end
+                if hrp.Transparency ~= 1 then hrp.Transparency = 1 end -- مخفي تماماً بناءً على طلبك
+                if hrp.CanCollide ~= false then hrp.CanCollide = false end
+                if hrp.CanTouch ~= true then hrp.CanTouch = true end
+                
+                -- ربط حدث اللمس بالـ Remote لجميع الكائنات (لاعبين وأعداء) بدون تكرار (Anti-Lag)
+                if not hrp:GetAttribute("HitboxConnected") then
+                    hrp:SetAttribute("HitboxConnected", true)
+                    hrp.Touched:Connect(function(hit)
+                        if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == player.Character then
+                            if RegisterHitRemote then
+                                pcall(function()
+                                    RegisterHitRemote:FireServer(hrp, {}, nil, "747c0deb")
+                                end)
+                            end
+                        end
+                    end)
+                end
+            else
+                if hrp.Size ~= DefaultSize then hrp.Size = DefaultSize end
+            end
+        end
+    end
+
+    -- تحديث الـ Hitboxes كل 0.2 ثانية (محسن ومدمج فيه فحص الأعداء واللاعبين معاً)
     local lastHitboxUpdate = 0
     RunService.Heartbeat:Connect(function()
         if not getgenv().AimbotActive then return end
         local now = tick()
         if now - lastHitboxUpdate < 0.2 then return end
         lastHitboxUpdate = now
+        
         local char = player.Character
         if not char then return end
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
+        
+        -- 1. تطبيق الـ Hitbox على اللاعبين الآخرين في السيرفر
         for _, pl in ipairs(Players:GetPlayers()) do
-            if pl ~= player then
-                local enemyChar = pl.Character
-                if enemyChar then
-                    local hrp = enemyChar:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local dist = (hrp.Position - myHrp.Position).Magnitude
-                        if dist <= AimbotConfig.SwordRange then
-                            local wantedSize = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                            
-                            -- تطبيق الخصائص المطلوبة دون أي اختصار وتثبيت الاختفاء التام
-                            if hrp.Size ~= wantedSize then hrp.Size = wantedSize end
-                            if hrp.Transparency ~= 1 then hrp.Transparency = 1 end -- جعل المربع غير مرئي بالكامل
-                            if hrp.CanCollide ~= false then hrp.CanCollide = false end
-                            if hrp.CanTouch ~= true then hrp.CanTouch = true end
-                            
-                            -- ربط حدث اللمس بالـ Remote الأصلي للعبة لتأكيد الضرر عند الأطراف بدون لاق
-                            if not hrp:GetAttribute("HitboxConnected") then
-                                hrp:SetAttribute("HitboxConnected", true)
-                                hrp.Touched:Connect(function(hit)
-                                    if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == player.Character then
-                                        if RegisterHitRemote then
-                                            pcall(function()
-                                                RegisterHitRemote:FireServer(hrp, {}, nil, "747c0deb")
-                                            end)
-                                        end
-                                    end
-                                end)
-                            end
-                        else
-                            if hrp.Size ~= DefaultSize then hrp.Size = DefaultSize end
-                        end
-                    end
-                end
+            if pl ~= player and pl.Character then
+                applyHitboxLogic(pl.Character, myHrp)
+            end
+        end
+        
+        -- 2. تطبيق الـ Hitbox على الأعداء والبوتات (NPCs) المتواجدين في الـ Workspace
+        for _, object in ipairs(workspace:GetChildren()) do
+            if object:IsA("Model") and object ~= char and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
+                applyHitboxLogic(object, myHrp)
             end
         end
     end)
 
-    print("[ARAKS HUB] INVISIBLE HITBOX & ANGLE FIX LOADED")
+    print("[ARAKS HUB] INVISIBLE MEGA HITBOX & ANGLE FIX LOADED")
 
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
