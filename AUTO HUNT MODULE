@@ -1,5 +1,5 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM + SKILLS)
--- version 1.3 (Added: Friend/Ally avoidance + Low HP Fly system)
+-- version 1.4 (Fixed: Fly system only works when module is enabled)
 
 local AutoHuntModule = {}
 
@@ -23,7 +23,7 @@ do
     local SkillBusy = false
     
     -- ==================================================
-    -- نظام تجنب الأصدقاء والتحالفات (تمت الإضافة)
+    -- نظام تجنب الأصدقاء والتحالفات
     -- ==================================================
     
     local function IsValidEnemy(plr)
@@ -56,17 +56,16 @@ do
     end
     
     -- ==================================================
-    -- نظام الطيران عند انخفاض الدم
+    -- نظام الطيران عند انخفاض الدم (يشتغل فقط لما الموديل شغال)
     -- ==================================================
     
-    local LOW_HEALTH_FLY = 5000    -- أقل من هذا يطير
-    local SAFE_HEALTH_RETURN = 8000 -- عند هذا يعود
+    local LOW_HEALTH_FLY = 5000
+    local SAFE_HEALTH_RETURN = 8000
     local FlyMode = false
     local SavedTarget = nil
     local FlyPosition = nil
-    local FlyPart = nil  -- الجزء الذي يثبت اللاعب في السماء
     
-    -- إنشاء جزء للتثبيت في السماء
+    -- منصة السماء
     local SkyPlatform = Instance.new("Part")
     SkyPlatform.Name = "ARAKS_SkyPlatform"
     SkyPlatform.Size = Vector3.new(5, 0.5, 5)
@@ -112,6 +111,10 @@ do
         return hum and hum.Health or 0
     end
     
+    local function IsModuleActive()
+        return Enabled or KillNearest or (SelectedPlayer ~= nil)
+    end
+    
     local function TapKey(key)
         if not IsAlive() then return end
         VirtualInputManager:SendKeyEvent(true, key, false, game)
@@ -128,7 +131,6 @@ do
         task.wait(0.14)
     end
     
-    -- دالة الحصول على أقرب عدو (مع تجنب الأصدقاء)
     local function GetNearestEnemy()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -152,8 +154,11 @@ do
         return nearest
     end
     
-    -- دالة الحصول على الهدف المناسب (مراعاة وضع الطيران)
     local function GetCurrentTarget()
+        if not IsModuleActive() then
+            return nil
+        end
+        
         if FlyMode then
             return SavedTarget
         end
@@ -171,28 +176,22 @@ do
         return target
     end
     
-    -- دالة الطيران إلى السماء
     local function FlyToSky()
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
         
-        -- حفظ موقع السماء (ارتفاع 7000)
         FlyPosition = myHrp.Position + Vector3.new(0, 7000, 0)
         
-        -- وضع المنصة في موقع السماء
         SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
         SkyPlatform.CanCollide = true
         
-        -- تليبرت اللاعب إلى السماء
         myHrp.CFrame = CFrame.new(FlyPosition)
         myHrp.Velocity = Vector3.zero
         myHrp.RotVelocity = Vector3.zero
         
-        -- إخفاء منصة القتال العادية
         platform.CFrame = CFrame.new(0, -1000, 0)
     end
     
-    -- دالة العودة إلى الأرض
     local function ReturnToGround(target)
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
@@ -201,14 +200,12 @@ do
         local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
         
         if targetHrp then
-            -- التليبرت مباشرة إلى الخصم
             myHrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 4)
         end
         
         myHrp.Velocity = Vector3.zero
         myHrp.RotVelocity = Vector3.zero
         
-        -- إخفاء منصة السماء
         SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
     end
     
@@ -255,17 +252,22 @@ do
     end
     
     -- ==================================================
-    -- نظام مراقبة الدم والطيران
+    -- نظام مراقبة الدم والطيران (يشتغل فقط لما الموديل شغال)
     -- ==================================================
     task.spawn(function()
         while true do
-            task.wait(0.1)  -- فحص سريع للدم
+            task.wait(0.1)
             
-            if not IsAlive() then
-                FlyMode = false
-                SavedTarget = nil
-                SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
-                task.wait(1)
+            -- اهم شرط: ما يشتغلش غير لما الموديل شغال
+            if not IsModuleActive() or not IsAlive() then
+                -- لو كان في وضع الطيران والموديل انطفي، ننزله
+                if FlyMode then
+                    FlyMode = false
+                    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if myHrp then
+                        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+                    end
+                end
                 continue
             end
             
@@ -273,43 +275,37 @@ do
             local currentTarget = GetCurrentTarget()
             
             -- حالة انخفاض الدم
-            if myHealth <= LOW_HEALTH_FLY and not FlyMode then
+            if myHealth <= LOW_HEALTH_FLY and not FlyMode and IsModuleActive() then
                 FlyMode = true
-                SavedTarget = currentTarget  -- حفظ الهدف الحالي
+                SavedTarget = currentTarget
                 FlyToSky()
-                print("[ARAKS HUB] الدم منخفض! الطيران إلى السماء. الدم: " .. myHealth)
             end
             
             -- حالة العودة بعد تعبئة الدم
             if FlyMode and myHealth >= SAFE_HEALTH_RETURN then
                 FlyMode = false
                 ReturnToGround(SavedTarget)
-                print("[ARAKS HUB] تم تعبئة الدم! العودة إلى الخصم. الدم: " .. myHealth)
             end
             
-            -- إذا كنا في وضع الطيران، نثبت اللاعب في السماء
+            -- تثبيت في السماء
             if FlyMode then
                 local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if myHrp and FlyPosition then
-                    -- تثبيت اللاعب في موقع السماء
                     myHrp.CFrame = CFrame.new(FlyPosition)
                     myHrp.Velocity = Vector3.zero
                     myHrp.RotVelocity = Vector3.zero
-                    
-                    -- تحديث موقع منصة السماء
                     SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
                 end
             end
         end
     end)
     
-    -- لوب المهارات (الحركة + ضرب المهارات)
+    -- لوب المهارات
     task.spawn(function()
         while true do
             task.wait(0.35)
             if not IsAlive() then continue end
-            
-            -- لا تستخدم المهارات في وضع الطيران
+            if not IsModuleActive() then continue end
             if FlyMode then continue end
             
             local target = GetCurrentTarget()
@@ -321,16 +317,16 @@ do
                     if not SkillBusy then
                         SkillBusy = true
                         pcall(function()
-                            -- تفعيل الهوت بار أولاً
                             for _, slot in ipairs(HotbarKeys) do
                                 if not IsAlive() then break end
                                 if FlyMode then break end
+                                if not IsModuleActive() then break end
                                 TapKey(slot)
                                 task.wait(0.12)
-                                -- ضرب المهارات (Z, X, C, V, F)
                                 for _, skill in ipairs(SkillKeys) do
                                     if not IsAlive() then break end
                                     if FlyMode then break end
+                                    if not IsModuleActive() then break end
                                     UseSkill(skill)
                                 end
                                 task.wait(0.06)
@@ -343,7 +339,7 @@ do
         end
     end)
     
-    -- لوب القتال الرئيسي (الحركة + الهجوم العادي)
+    -- لوب القتال الرئيسي
     task.spawn(function()
         while true do
             task.wait()
@@ -352,8 +348,7 @@ do
                 continue 
             end
             
-            -- لا تتحرك أو تهاجم في وضع الطيران
-            if FlyMode then
+            if not IsModuleActive() or FlyMode then
                 platform.CFrame = CFrame.new(0, -1000, 0)
                 task.wait(0.1)
                 continue
@@ -382,11 +377,15 @@ do
         Enabled = state
         if state then
             KillNearest = false
+            FlyMode = false  -- لما تشغل الموديل، يتأكد انه نازل من السماء
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
         end
         if not state then
             if currentTween then pcall(function() currentTween:Cancel() end) end
             currentTween = nil
             platform.CFrame = CFrame.new(0, -1000, 0)
+            FlyMode = false
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
         end
     end
     
@@ -394,6 +393,8 @@ do
         KillNearest = state
         if state then
             Enabled = false
+            FlyMode = false
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
         end
         if not state then
             if currentTween then pcall(function() currentTween:Cancel() end) end
@@ -403,13 +404,16 @@ do
     end
     
     function AutoHuntModule:SetSelectedPlayer(player)
-        -- التحقق من أن اللاعب المحدد ليس صديقاً
         if player and not IsValidEnemy(player) then
             print("[ARAKS HUB] لا يمكن تحديد هذا اللاعب (صديق أو نفس الفريق)")
             return
         end
         SelectedPlayer = player
         KillNearest = false
+        if player then
+            FlyMode = false
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+        end
     end
     
     function AutoHuntModule:GetSelectedPlayer()
