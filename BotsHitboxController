@@ -5,7 +5,7 @@ local ReplicatedStorageService = game:GetService("ReplicatedStorage")
 local LocalPlayerService = PlayersService.LocalPlayer
 local RunServiceService = game:GetService("RunService")
 
--- إعدادات المربع (تعريفات جديدة)
+-- إعدادات المربع
 local BotsHitboxData = {
     BoxSize = Vector3.new(40, 40, 40),
     BoxAlpha = 0.5,
@@ -13,24 +13,24 @@ local BotsHitboxData = {
     BodyColor = Color3.fromRGB(128, 0, 255)
 }
 
--- جلب الريموت (تعريف جديد)
+-- جلب الريموت
 local HitRegisterRemote = nil
 pcall(function()
     HitRegisterRemote = ReplicatedStorageService:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
 end)
 
--- حالة التشغيل (تعريف جديد)
-local IsBotsHitboxOn = true
+-- حالة التشغيل
+local IsBotsHitboxOn = false
 local TrackedBots = {}
 
--- دالة إضافة الإطار المرئي (تعريف جديد)
+-- دالة إضافة الإطار المرئي
 local function AddBotsVisualFrame(rootPart)
     for _, child in pairs(rootPart:GetChildren()) do
         if child:IsA("SelectionBox") and child.Name == "BotsHitboxFrame" then
             child:Destroy()
         end
     end
-    
+
     local visualFrame = Instance.new("SelectionBox")
     visualFrame.Name = "BotsHitboxFrame"
     visualFrame.Adornee = rootPart
@@ -46,7 +46,7 @@ end
 local function ApplyToBotsOnly(botCharacter)
     if not IsBotsHitboxOn then return end
     if not botCharacter then return end
-    
+
     -- منع التطبيق على اللاعبين الحقيقيين
     local isRealPlayerCharacter = false
     for _, player in pairs(PlayersService:GetPlayers()) do
@@ -55,12 +55,12 @@ local function ApplyToBotsOnly(botCharacter)
             break
         end
     end
-    
+
     if isRealPlayerCharacter then return end
-    
+
     local botRoot = botCharacter:FindFirstChild("HumanoidRootPart")
     local botHumanoid = botCharacter:FindFirstChildOfClass("Humanoid")
-    
+
     if botRoot and botHumanoid and botHumanoid.Health > 0 then
         pcall(function()
             botRoot.Size = BotsHitboxData.BoxSize
@@ -68,14 +68,12 @@ local function ApplyToBotsOnly(botCharacter)
             botRoot.Transparency = BotsHitboxData.BoxAlpha
             botRoot.Color = BotsHitboxData.BodyColor
             botRoot.Material = Enum.Material.ForceField
-            
             AddBotsVisualFrame(botRoot)
         end)
-        
+
         if not TrackedBots[botCharacter] then
             TrackedBots[botCharacter] = true
-            
-            -- مراقبة تغير حجم البوت (لما يتحول لشكل كبير)
+
             local sizeChangeConnection = nil
             sizeChangeConnection = botRoot:GetPropertyChangedSignal("Size"):Connect(function()
                 if IsBotsHitboxOn and botRoot and botRoot.Parent then
@@ -87,15 +85,14 @@ local function ApplyToBotsOnly(botCharacter)
                     end)
                 end
             end)
-            
-            -- مراقبة اختفاء البوت
+
             botCharacter.AncestryChanged:Connect(function()
                 if not botCharacter.Parent then
                     TrackedBots[botCharacter] = nil
                     if sizeChangeConnection then sizeChangeConnection:Disconnect() end
                 end
             end)
-            
+
             botRoot.Touched:Connect(function(hit)
                 if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayerService.Character then
                     if HitRegisterRemote then
@@ -109,7 +106,7 @@ local function ApplyToBotsOnly(botCharacter)
     end
 end
 
--- مسح كل التعديلات عن البوتات
+-- مسح كل التعديلات
 local function ClearAllBotsHitboxes()
     for botChar, _ in pairs(TrackedBots) do
         pcall(function()
@@ -132,7 +129,7 @@ local function ClearAllBotsHitboxes()
     TrackedBots = {}
 end
 
--- الحلقة الرئيسية (تفحص فقط البوتات في اللعبة)
+-- الحلقة الرئيسية
 local BotsDetectionLoop = nil
 local function StartBotsLoop()
     if BotsDetectionLoop then return end
@@ -158,7 +155,7 @@ end
 
 StartBotsLoop()
 
--- API للتحكم من الـ GUI
+-- API للتحكم
 local BotsHitboxController = {}
 
 function BotsHitboxController:SetEnabled(State)
