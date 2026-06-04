@@ -9,20 +9,38 @@ local RunService = game:GetService("RunService")
 local Settings = {
     HitboxSize = Vector3.new(40, 40, 40),
     HitboxTransparency = 0.5,
-    HitboxColor = Color3.fromRGB(0, 0, 0),  -- أسود
-    FillColor = Color3.fromRGB(128, 0, 255) -- بنفسجي
+    HitboxColor = Color3.fromRGB(0, 0, 0),
+    FillColor = Color3.fromRGB(128, 0, 255)
 }
 
--- جلب الريموت المسؤول عن تسجيل الضربات
+-- جلب الريموت
 local RegisterHitRemote = nil
 pcall(function()
     RegisterHitRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
 end)
 
--- حالة التشغيل
 local IsActive = true
+local TrackedCharacters = {} -- تتبع الشخصيات اللي طبقنا عليها
 
--- دالة لتطبيق المربع العملاق
+-- دالة إضافة الـ SelectionBox
+local function addSelectionBox(rootPart)
+    for _, child in pairs(rootPart:GetChildren()) do
+        if child:IsA("SelectionBox") then
+            child:Destroy()
+        end
+    end
+    
+    local selectionBox = Instance.new("SelectionBox")
+    selectionBox.Adornee = rootPart
+    selectionBox.Color3 = Settings.HitboxColor
+    selectionBox.LineThickness = 0.1
+    selectionBox.Transparency = 0
+    selectionBox.SurfaceColor3 = Settings.FillColor
+    selectionBox.SurfaceTransparency = 0.7
+    selectionBox.Parent = rootPart
+end
+
+-- دالة تطبيق المربع
 local function applyCustomHitbox(character)
     if not IsActive then return end
     if not character or character == LocalPlayer.Character then return end
@@ -30,66 +48,81 @@ local function applyCustomHitbox(character)
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     
-    if rootPart and humanoid and humanoid.Health > 0 and not rootPart:GetAttribute("HitboxModified") then
-        rootPart:SetAttribute("HitboxModified", true)
+    if rootPart and humanoid and humanoid.Health > 0 then
+        -- تطبيق الحجم دائماً (حتى لو كان معمول من قبل)
+        pcall(function()
+            rootPart.Size = Settings.HitboxSize
+            rootPart.CanCollide = false
+            rootPart.Transparency = Settings.HitboxTransparency
+            rootPart.Color = Settings.FillColor
+            rootPart.Material = Enum.Material.ForceField
+            
+            addSelectionBox(rootPart)
+        end)
         
-        -- تطبيق الحجم والخصائص المرئية
-        rootPart.Size = Settings.HitboxSize
-        rootPart.CanCollide = false
-        rootPart.Transparency = Settings.HitboxTransparency
-        rootPart.Color = Settings.FillColor  -- بنفسجي شفاف
-        rootPart.Material = Enum.Material.ForceField
-        
-        -- إضافة SelectionBox للأطراف السوداء
-        local selectionBox = Instance.new("SelectionBox")
-        selectionBox.Adornee = rootPart
-        selectionBox.Color3 = Settings.HitboxColor  -- أسود
-        selectionBox.LineThickness = 0.1
-        selectionBox.Transparency = 0
-        selectionBox.SurfaceColor3 = Settings.FillColor
-        selectionBox.SurfaceTransparency = 0.7
-        selectionBox.Parent = rootPart
-        
-        -- حفظ الـ SelectionBox عشان نمسحه بعدين
-        rootPart:SetAttribute("HasSelectionBox", true)
-        
-        rootPart.Touched:Connect(function(hit)
-            if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
-                if RegisterHitRemote then
+        -- إذا أول مرة نطبق على هالشخصية، نضيف حدث اللمس
+        if not TrackedCharacters[character] then
+            TrackedCharacters[character] = true
+            
+            -- مراقبة تغير الحجم من اللعبة (مثل الماموث)
+            local sizeConnection = nil
+            sizeConnection = rootPart:GetPropertyChangedSignal("Size"):Connect(function()
+                if IsActive and rootPart and rootPart.Parent then
+                    -- إذا تغير الحجم، نعيد تطبيق حجمنا
                     pcall(function()
-                        RegisterHitRemote:FireServer(rootPart, {}, nil, "747c0deb")
+                        if rootPart.Size ~= Settings.HitboxSize then
+                            rootPart.Size = Settings.HitboxSize
+                            addSelectionBox(rootPart)
+                        end
                     end)
                 end
-            end
-        end)
+            end)
+            
+            -- مراقبة اختفاء الشخصية
+            character.AncestryChanged:Connect(function()
+                if not character.Parent then
+                    TrackedCharacters[character] = nil
+                    if sizeConnection then sizeConnection:Disconnect() end
+                end
+            end)
+            
+            rootPart.Touched:Connect(function(hit)
+                if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
+                    if RegisterHitRemote then
+                        pcall(function()
+                            RegisterHitRemote:FireServer(rootPart, {}, nil, "747c0deb")
+                        end)
+                    end
+                end
+            end)
+        end
     end
 end
 
 -- مسح التعديلات
 local function clearAllModifications()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-            if rootPart then
-                pcall(function()
-                    -- مسح الـ SelectionBox
+    for character, _ in pairs(TrackedCharacters) do
+        pcall(function()
+            if character and character.Parent then
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                if rootPart then
                     for _, child in pairs(rootPart:GetChildren()) do
                         if child:IsA("SelectionBox") then
                             child:Destroy()
                         end
                     end
-                    rootPart:SetAttribute("HitboxModified", nil)
                     rootPart.Size = Vector3.new(2, 2, 1)
                     rootPart.Transparency = 0
                     rootPart.Color = Color3.fromRGB(255, 255, 255)
                     rootPart.Material = Enum.Material.Plastic
-                end)
+                end
             end
-        end
+        end)
     end
+    TrackedCharacters = {}
 end
 
--- الحلقة الرئيسية
+-- الحلقة الرئيسية (أسرع عشان يلتقط التحولات بسرعة)
 local loopConnection = nil
 local function startLoop()
     if loopConnection then return end
@@ -102,7 +135,16 @@ local function startLoop()
             end
             for _, object in pairs(workspace:GetChildren()) do
                 if object:IsA("Model") and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
-                    applyCustomHitbox(object)
+                    local isPlayer = false
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player.Character == object then
+                            isPlayer = true
+                            break
+                        end
+                    end
+                    if not isPlayer then
+                        applyCustomHitbox(object)
+                    end
                 end
             end
         end
@@ -111,7 +153,7 @@ end
 
 startLoop()
 
--- API للتحكم من الـ GUI
+-- API للتحكم
 local HitboxAPI = {}
 
 function HitboxAPI:SetEnabled(State)
@@ -125,9 +167,12 @@ end
 function HitboxAPI:SetSize(SizeValue)
     Settings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
     if IsActive then
-        clearAllModifications()
+        -- نمسح التتبع ونعيد التطبيق على الكل
+        for char, _ in pairs(TrackedCharacters) do
+            TrackedCharacters[char] = nil
+        end
+        print("[Hitbox] SetSize:", SizeValue)
     end
-    print("[Hitbox] SetSize:", SizeValue)
 end
 
 function HitboxAPI:IsEnabled()
