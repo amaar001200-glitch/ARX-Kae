@@ -1,4 +1,4 @@
--- █ MODULE: SKILL AIMLOCK (FIXED - مراقبة المفاتيح المباشرة)
+-- █ MODULE: SKILL AIMLOCK
 
 return function(env)
 
@@ -14,33 +14,20 @@ do
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local UserInputService = game:GetService("UserInputService")
 
     local Enabled = false
+    local LockDuration = 1.0
     local MaxDistance = 300
 
-    -- متغيرات للضغط المستمر
-    local activeKeys = {}     -- المفاتيح المضغوطة حالياً
-    local currentTarget = nil
-    local aimRenderConn = nil
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    
-    -- قائمة المفاتيح التي نهتم بها (المهارات)
-    local TrackedKeys = {
-        [Enum.KeyCode.Z] = "Z",
-        [Enum.KeyCode.X] = "X",
-        [Enum.KeyCode.C] = "C",
-        [Enum.KeyCode.V] = "V",
-        [Enum.KeyCode.F] = "F",
-        [Enum.KeyCode.One] = "One",
-        [Enum.KeyCode.Two] = "Two",
-        [Enum.KeyCode.Three] = "Three",
-        [Enum.KeyCode.Four] = "Four",
-    }
 
-    -- دالة للحصول على أقرب هدف (مع تجنب الأصدقاء)
+    local aimlockActive = false
+    local aimRenderConn = nil
+    local aimTimeoutTask = nil
+
     local function getNearestTarget()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
         if not hrp then
             return nil
         end
@@ -54,168 +41,76 @@ do
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
 
                 if ehrp and h and h.Health > 0 then
-                    -- تجنب الأصدقاء (نفس الفريق)
-                    if p.Team == LocalPlayer.Team then
-                        -- إذا كان تفادي الأصدقاء مفعلاً
-                        if Config.AvoidFriends then
-                            goto skip
-                        end
-                    end
-                    
                     local dist = (ehrp.Position - hrp.Position).Magnitude
+
                     if dist < shortest then
                         shortest = dist
                         nearest = p.Character
                     end
                 end
             end
-            ::skip::
         end
+
         return nearest
     end
 
-    -- دالة إيقاف Aimlock
     local function stopAimlock()
+        if not aimlockActive then
+            return
+        end
+
+        aimlockActive = false
+
         if aimRenderConn then
             aimRenderConn:Disconnect()
             aimRenderConn = nil
         end
-        currentTarget = nil
+
+        if aimTimeoutTask then
+            task.cancel(aimTimeoutTask)
+            aimTimeoutTask = nil
+        end
     end
 
-    -- دالة بدء Aimlock
     local function startAimlock(target)
-        if not Enabled or not target then
+        if not Enabled or aimlockActive or not target then
             return
         end
 
         local targetHRP = target:FindFirstChild("HumanoidRootPart")
+
         if not targetHRP then
             return
         end
 
-        currentTarget = target
-        
-        -- إذا كان الريندر شغال، نوقفه ونشغله من جديد
-        if aimRenderConn then
-            aimRenderConn:Disconnect()
-            aimRenderConn = nil
-        end
+        aimlockActive = true
 
         aimRenderConn = RunService.RenderStepped:Connect(function()
-            if not Enabled then
+            if not Enabled or not aimlockActive then
                 stopAimlock()
                 return
             end
-            
-            -- التحقق من وجود أي مفتاح مهارة مضغوط
-            local hasActiveKey = false
-            for keyCode, isPressed in pairs(activeKeys) do
-                if isPressed then
-                    local skillName = TrackedKeys[keyCode]
-                    if skillName and Config["Skill" .. skillName] then
-                        hasActiveKey = true
-                        break
-                    end
-                end
-            end
-            
-            if not hasActiveKey then
+
+            local hrp = target:FindFirstChild("HumanoidRootPart")
+
+            if hrp then
+                local camPos = Camera.CFrame.Position
+                Camera.CFrame = CFrame.new(camPos, hrp.Position)
+            else
                 stopAimlock()
-                return
             end
-            
-            -- التحقق من الهدف الحالي
-            local targetHRP = currentTarget and currentTarget:FindFirstChild("HumanoidRootPart")
-            if not targetHRP then
-                -- محاولة البحث عن هدف جديد
-                local newTarget = getNearestTarget()
-                if newTarget then
-                    currentTarget = newTarget
-                    targetHRP = currentTarget:FindFirstChild("HumanoidRootPart")
-                end
-                
-                if not targetHRP then
-                    return
-                end
-            end
-            
-            -- تثبيت الكاميرا على الهدف
-            local camPos = Camera.CFrame.Position
-            Camera.CFrame = CFrame.new(camPos, targetHRP.Position)
+        end)
+
+        aimTimeoutTask = task.delay(LockDuration, function()
+            stopAimlock()
         end)
     end
-    
-    -- دالة لفحص وتحديث حالة الـ Aimlock بناءً على المفاتيح النشطة
-    local function updateAimlockState()
-        if not Enabled then
-            stopAimlock()
-            return
-        end
-        
-        -- البحث عن أي مفتاح مهارة نشط ومفعل في الـ Config
-        local anyActiveSkill = false
-        for keyCode, isPressed in pairs(activeKeys) do
-            if isPressed then
-                local skillName = TrackedKeys[keyCode]
-                if skillName and Config["Skill" .. skillName] then
-                    anyActiveSkill = true
-                    break
-                end
-            end
-        end
-        
-        if anyActiveSkill then
-            -- يوجد مفتاح مهارة نشط، شغل الـ Aimlock إذا ما كان شغال
-            if not aimRenderConn then
-                local target = getNearestTarget()
-                if target then
-                    startAimlock(target)
-                end
-            end
-        else
-            -- ما فيه مفتاح نشط، أوقف الـ Aimlock
-            stopAimlock()
-        end
-    end
 
-    -- ==================================================
-    -- مراقبة المفاتيح مباشرة
-    -- ==================================================
-    
-    -- حدث الضغط على المفتاح
-    local function onInputBegan(input, gameProcessed)
-        if gameProcessed then return end
-        
-        local keyCode = input.KeyCode
-        local skillName = TrackedKeys[keyCode]
-        
-        if skillName and Config["Skill" .. skillName] then
-            activeKeys[keyCode] = true
-            updateAimlockState()
-        end
-    end
-    
-    -- حدث رفع الإصبع عن المفتاح
-    local function onInputEnded(input, gameProcessed)
-        local keyCode = input.KeyCode
-        local skillName = TrackedKeys[keyCode]
-        
-        if skillName then
-            activeKeys[keyCode] = false
-            updateAimlockState()
-        end
-    end
-    
-    -- ربط الأحداث
-    UserInputService.InputBegan:Connect(onInputBegan)
-    UserInputService.InputEnded:Connect(onInputEnded)
-
-    -- هوك المهارات (احتياطي لبعض السيرفرات)
     if not getgenv().SkillAimlock_Hooked then
         getgenv().SkillAimlock_Hooked = true
 
         local oldNamecall
+
         oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
@@ -225,14 +120,22 @@ do
 
                 if typeof(a1) == "string" then
                     local skillKey = a1:upper()
+
                     if Config["Skill" .. skillKey] then
-                        -- فقط نتأكد أن الـ Aimlock شغال
-                        if not aimRenderConn then
+                        task.spawn(function()
                             local target = getNearestTarget()
+
                             if target then
+                                -- ==================================================
+                                -- التعديل الوحيد: بدل ما يشتغل مرة وحدة،
+                                -- إذا كان الـ Aimlock شغال نوقفه ونشتغله مرة ثانية عشان يبدأ المؤقت من جديد
+                                -- ==================================================
+                                if aimlockActive then
+                                    stopAimlock()
+                                end
                                 startAimlock(target)
                             end
-                        end
+                        end)
                     end
                 end
             end
@@ -241,18 +144,20 @@ do
         end)
     end
 
-    -- دوال التحكم
     function SkillAimlockModule:SetEnabled(state)
         Enabled = state
         Config.SkillAimlockEnabled = state
         if not state then
             stopAimlock()
-            activeKeys = {}
         end
     end
 
     function SkillAimlockModule:SetSkill(skill, state)
         Config["Skill" .. skill] = state
+    end
+
+    function SkillAimlockModule:SetDuration(duration)
+        LockDuration = duration
     end
 
     function SkillAimlockModule:SetMaxDistance(distance)
@@ -261,15 +166,14 @@ do
 
     function SkillAimlockModule:UpdateConfig()
         Enabled = Config.SkillAimlockEnabled
+        LockDuration = Config.SkillAimlockDuration or 1
     end
 
-    -- تحديث الإعدادات من Config
     SkillAimlockModule:UpdateConfig()
 
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         char = newChar
         stopAimlock()
-        activeKeys = {}
     end)
 end
 
