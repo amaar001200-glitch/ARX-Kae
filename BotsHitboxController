@@ -5,26 +5,26 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- إعدادات الـ Hitbox (يمكنك التعديل عليها حسب رغبتك)
+-- إعدادات الـ Hitbox
 local Settings = {
-    HitboxSize = Vector3.new(20, 20, 20), -- حجم المربع (كلما زاد، زادت مسافة الضرب)
-    HitboxTransparency = 0.6,             -- شفافية المربع (0 مرئي بالكامل، 1 مخفي)
-    HitboxColor = Color3.fromRGB(255, 0, 0), -- لون المربع (أحمر)
-    KillAuraEnabled = true                 -- تفعيل الضرب التلقائي عند لمس المربع
+    HitboxSize = Vector3.new(40, 40, 40),
+    HitboxTransparency = 0.6,
+    HitboxColor = Color3.fromRGB(255, 0, 0),
+    KillAuraEnabled = true
 }
 
--- استدعاء دوال اللعبة الأساسية التي تم تحديدها في الملفات
+-- استدعاء دوال اللعبة الأساسية
 local CombatController = nil
 local WeaponToolShared = nil
 
 pcall(function()
-    -- محاولة جلب وحدات التحكم بالقتال والأسلحة من الـ ReplicatedStorage
     CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     WeaponToolShared = require(ReplicatedStorage:WaitForChild("SharedComponents"):WaitForChild("WeaponToolShared"))
 end)
 
--- حالة التشغيل (للتحكم من الـ GUI)
+-- حالة التشغيل
 local IsActive = true
+local RenderConnection = nil
 
 -- وظيفة تعديل وتكبير الـ Hitbox للخصم
 local function modifyHitbox(character)
@@ -34,63 +34,94 @@ local function modifyHitbox(character)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         
         if rootPart and humanoid and humanoid.Health > 0 then
-            -- 1. تكبير حجم صندوق التصادم الأساسي (RootPart)
-            rootPart.Size = Settings.HitboxSize
-            rootPart.CanCollide = false -- لمنع حدوث مشاكل في الحركة أو التعثر بالخصم
-            
-            -- 2. تلوين المربع وتوضيحه برمجياً (Visualizer)
-            rootPart.Transparency = Settings.HitboxTransparency
-            rootPart.Color = Settings.HitboxColor
-            rootPart.Material = Enum.Material.ForceField -- تأثير متوهج مميز
-            
-            -- 3. تفعيل الضرب التلقائي (Kill Aura) إذا تم تفعيل الخيار وث ثبات الـ Hit Detection
-            if Settings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
-                -- محاكاة دالة كشف الضربات الخاصة باللعبة لتسجيل ضرر تلقائي
-                task.spawn(function()
-                    pcall(function()
-                        CombatController.runHitDetection(character)
+            pcall(function()
+                rootPart.Size = Settings.HitboxSize
+                rootPart.CanCollide = false
+                rootPart.Transparency = Settings.HitboxTransparency
+                rootPart.Color = Settings.HitboxColor
+                rootPart.Material = Enum.Material.ForceField
+                
+                if Settings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
+                    task.spawn(function()
+                        pcall(function()
+                            CombatController.runHitDetection(character)
+                        end)
                     end)
-                end)
-            end
+                end
+            end)
         end
     end
 end
 
--- حلقة تكرارية مستمرة لفحص جميع الأعداء واللاعبين وتطبيق السكربت عليهم
-RunService.RenderStepped:Connect(function()
-    if not IsActive then return end
-    -- الفحص أولاً في مجلدات الأعداء المخصصة باللعبة (Enemies / Characters)
-    local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
-    
-    if enemyFolder then
-        for _, enemy in pairs(enemyFolder:GetChildren()) do
-            modifyHitbox(enemy)
-        end
-    else
-        -- في حال عدم وجود مجلد مخصص، يتم التطبيق على مجلد اللاعبين العام
-        for _, player in pairs(Players:GetPlayers()) do
-            if player.Character then
-                modifyHitbox(player.Character)
+-- الحلقة الرئيسية
+local function startLoop()
+    if RenderConnection then return end
+    RenderConnection = RunService.RenderStepped:Connect(function()
+        if not IsActive then return end
+        local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
+        
+        if enemyFolder then
+            for _, enemy in pairs(enemyFolder:GetChildren()) do
+                modifyHitbox(enemy)
+            end
+        else
+            for _, player in pairs(Players:GetPlayers()) do
+                if player.Character then
+                    modifyHitbox(player.Character)
+                end
             end
         end
-    end
-end)
+    end)
+end
 
-print("[+] تم تحميل سكربت الـ Hitbox بنجاح واستغلال ملفات القتال!")
+-- دالة إيقاف الحلقة ومسح التعديلات
+local function stopLoopAndClear()
+    if RenderConnection then
+        RenderConnection:Disconnect()
+        RenderConnection = nil
+    end
+    
+    -- إعادة حجم البوتات إلى الطبيعي
+    local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
+    if enemyFolder then
+        for _, enemy in pairs(enemyFolder:GetChildren()) do
+            pcall(function()
+                local rootPart = enemy:FindFirstChild("HumanoidRootPart")
+                if rootPart then
+                    rootPart.Size = Vector3.new(2, 2, 1)
+                    rootPart.Transparency = 0
+                    rootPart.Color = Color3.fromRGB(255, 255, 255)
+                    rootPart.Material = Enum.Material.Plastic
+                end
+            end)
+        end
+    end
+end
+
+-- بدء التشغيل
+startLoop()
+
+print("[+] تم تحميل سكربت الـ Hitbox بنجاح")
 
 -- ============================================
--- API للتحكم من الـ GUI الرئيسي (لربط السلايدر)
+-- API للتحكم من الـ GUI الرئيسي
 -- ============================================
 local BotsHitboxAPI = {}
 
 function BotsHitboxAPI:SetEnabled(State)
     IsActive = State
-    print("[Bots Hitbox] State:", State)
+    if State then
+        startLoop()
+        print("[Bots Hitbox] تم التفعيل")
+    else
+        stopLoopAndClear()
+        print("[Bots Hitbox] تم الإيقاف")
+    end
 end
 
 function BotsHitboxAPI:SetSize(SizeValue)
     Settings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
-    print("[Bots Hitbox] Size:", SizeValue)
+    print("[Bots Hitbox] الحجم:", SizeValue)
 end
 
 function BotsHitboxAPI:IsEnabled()
