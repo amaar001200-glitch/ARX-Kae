@@ -23,8 +23,12 @@ pcall(function()
     WeaponToolShared = require(ReplicatedStorage:WaitForChild("SharedComponents"):WaitForChild("WeaponToolShared"))
 end)
 
+-- حالة التشغيل (للتحكم من الـ GUI)
+local IsActive = true
+
 -- وظيفة تعديل وتكبير الـ Hitbox للخصم
 local function modifyHitbox(character)
+    if not IsActive then return end
     if character and character.Name ~= LocalPlayer.Name then
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -54,6 +58,7 @@ end
 
 -- حلقة تكرارية مستمرة لفحص جميع الأعداء واللاعبين وتطبيق السكربت عليهم
 RunService.RenderStepped:Connect(function()
+    if not IsActive then return end
     -- الفحص أولاً في مجلدات الأعداء المخصصة باللعبة (Enemies / Characters)
     local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
     
@@ -72,3 +77,28 @@ RunService.RenderStepped:Connect(function()
 end)
 
 print("[+] تم تحميل سكربت الـ Hitbox بنجاح واستغلال ملفات القتال!")
+
+-- ============================================
+-- API للتحكم من الـ GUI الرئيسي (لربط السلايدر)
+-- ============================================
+local BotsHitboxAPI = {}
+
+function BotsHitboxAPI:SetEnabled(State)
+    IsActive = State
+    print("[Bots Hitbox] State:", State)
+end
+
+function BotsHitboxAPI:SetSize(SizeValue)
+    Settings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
+    print("[Bots Hitbox] Size:", SizeValue)
+end
+
+function BotsHitboxAPI:IsEnabled()
+    return IsActive
+end
+
+function BotsHitboxAPI:GetSize()
+    return Settings.HitboxSize.X
+end
+
+return BotsHitboxAPI
