@@ -1,4 +1,4 @@
--- [[ Blox Fruits - BOTS HITBOX CONTROLLER (Players Excluded) ]] --
+-- [[ Blox Fruits - HITBOX ON EVERYTHING (Except Real Players) ]] --
 
 local PlayersService = game:GetService("Players")
 local ReplicatedStorageService = game:GetService("ReplicatedStorage")
@@ -6,7 +6,7 @@ local LocalPlayerService = PlayersService.LocalPlayer
 local RunServiceService = game:GetService("RunService")
 
 -- إعدادات المربع
-local BotsHitboxData = {
+local HitboxData = {
     BoxSize = Vector3.new(40, 40, 40),
     BoxAlpha = 0.5,
     BorderColor = Color3.fromRGB(0, 0, 0),
@@ -20,84 +20,85 @@ pcall(function()
 end)
 
 -- حالة التشغيل
-local IsBotsHitboxOn = false
-local TrackedBots = {}
+local IsHitboxActive = false
+local TrackedObjects = {}
 
 -- دالة إضافة الإطار المرئي
-local function AddBotsVisualFrame(rootPart)
+local function AddVisualFrame(rootPart)
     for _, child in pairs(rootPart:GetChildren()) do
-        if child:IsA("SelectionBox") and child.Name == "BotsHitboxFrame" then
+        if child:IsA("SelectionBox") and child.Name == "HitboxFrame" then
             child:Destroy()
         end
     end
 
     local visualFrame = Instance.new("SelectionBox")
-    visualFrame.Name = "BotsHitboxFrame"
+    visualFrame.Name = "HitboxFrame"
     visualFrame.Adornee = rootPart
-    visualFrame.Color3 = BotsHitboxData.BorderColor
-    visualFrame.LineThickness = 0.1
+    visualFrame.Color3 = HitboxData.BorderColor
+    visualFrame.LineThickness = 0.15
     visualFrame.Transparency = 0
-    visualFrame.SurfaceColor3 = BotsHitboxData.BodyColor
+    visualFrame.SurfaceColor3 = HitboxData.BodyColor
     visualFrame.SurfaceTransparency = 0.7
     visualFrame.Parent = rootPart
 end
 
--- دالة تطبيق المربع على البوتات فقط
-local function ApplyToBotsOnly(botCharacter)
-    if not IsBotsHitboxOn then return end
-    if not botCharacter then return end
+-- دالة تطبيق المربع
+local function ApplyToObject(object)
+    if not IsHitboxActive then return end
+    if not object then return end
 
-    -- منع التطبيق على اللاعبين الحقيقيين
-    local isRealPlayerCharacter = false
+    -- استبعاد اللاعب الحقيقي فقط
+    local isRealPlayer = false
     for _, player in pairs(PlayersService:GetPlayers()) do
-        if player.Character == botCharacter then
-            isRealPlayerCharacter = true
+        if player.Character == object then
+            isRealPlayer = true
             break
         end
     end
+    
+    -- إذا كان لاعب حقيقي، لا نطبق عليه
+    if isRealPlayer then return end
 
-    if isRealPlayerCharacter then return end
+    local objectRoot = object:FindFirstChild("HumanoidRootPart")
+    local objectHumanoid = object:FindFirstChildOfClass("Humanoid")
 
-    local botRoot = botCharacter:FindFirstChild("HumanoidRootPart")
-    local botHumanoid = botCharacter:FindFirstChildOfClass("Humanoid")
-
-    if botRoot and botHumanoid and botHumanoid.Health > 0 then
+    if objectRoot and objectHumanoid and objectHumanoid.Health > 0 then
         pcall(function()
-            botRoot.Size = BotsHitboxData.BoxSize
-            botRoot.CanCollide = false
-            botRoot.Transparency = BotsHitboxData.BoxAlpha
-            botRoot.Color = BotsHitboxData.BodyColor
-            botRoot.Material = Enum.Material.ForceField
-            AddBotsVisualFrame(botRoot)
+            objectRoot.Size = HitboxData.BoxSize
+            objectRoot.CanCollide = false
+            objectRoot.Transparency = HitboxData.BoxAlpha
+            objectRoot.Color = HitboxData.BodyColor
+            objectRoot.Material = Enum.Material.ForceField
+            AddVisualFrame(objectRoot)
         end)
 
-        if not TrackedBots[botCharacter] then
-            TrackedBots[botCharacter] = true
+        if not TrackedObjects[object] then
+            TrackedObjects[object] = true
 
             local sizeChangeConnection = nil
-            sizeChangeConnection = botRoot:GetPropertyChangedSignal("Size"):Connect(function()
-                if IsBotsHitboxOn and botRoot and botRoot.Parent then
+            sizeChangeConnection = objectRoot:GetPropertyChangedSignal("Size"):Connect(function()
+                if IsHitboxActive and objectRoot and objectRoot.Parent then
                     pcall(function()
-                        if botRoot.Size ~= BotsHitboxData.BoxSize then
-                            botRoot.Size = BotsHitboxData.BoxSize
-                            AddBotsVisualFrame(botRoot)
+                        if objectRoot.Size ~= HitboxData.BoxSize then
+                            objectRoot.Size = HitboxData.BoxSize
+                            AddVisualFrame(objectRoot)
                         end
                     end)
                 end
             end)
 
-            botCharacter.AncestryChanged:Connect(function()
-                if not botCharacter.Parent then
-                    TrackedBots[botCharacter] = nil
+            object.AncestryChanged:Connect(function()
+                if not object.Parent then
+                    TrackedObjects[object] = nil
                     if sizeChangeConnection then sizeChangeConnection:Disconnect() end
                 end
             end)
 
-            botRoot.Touched:Connect(function(hit)
+            objectRoot.Touched:Connect(function(hit)
                 if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayerService.Character then
                     if HitRegisterRemote then
                         pcall(function()
-                            HitRegisterRemote:FireServer(botRoot, {}, nil, "747c0deb")
+                            HitRegisterRemote:FireServer(objectRoot, {}, nil, "747c0deb")
                         end)
                     end
                 end
@@ -106,82 +107,73 @@ local function ApplyToBotsOnly(botCharacter)
     end
 end
 
--- مسح كل التعديلات
-local function ClearAllBotsHitboxes()
-    for botChar, _ in pairs(TrackedBots) do
+-- مسح جميع التعديلات
+local function ClearAllModifications()
+    for obj, _ in pairs(TrackedObjects) do
         pcall(function()
-            if botChar and botChar.Parent then
-                local botRoot = botChar:FindFirstChild("HumanoidRootPart")
-                if botRoot then
-                    for _, child in pairs(botRoot:GetChildren()) do
-                        if child:IsA("SelectionBox") and child.Name == "BotsHitboxFrame" then
+            if obj and obj.Parent then
+                local objectRoot = obj:FindFirstChild("HumanoidRootPart")
+                if objectRoot then
+                    for _, child in pairs(objectRoot:GetChildren()) do
+                        if child:IsA("SelectionBox") and child.Name == "HitboxFrame" then
                             child:Destroy()
                         end
                     end
-                    botRoot.Size = Vector3.new(2, 2, 1)
-                    botRoot.Transparency = 0
-                    botRoot.Color = Color3.fromRGB(255, 255, 255)
-                    botRoot.Material = Enum.Material.Plastic
+                    objectRoot.Size = Vector3.new(2, 2, 1)
+                    objectRoot.Transparency = 0
+                    objectRoot.Color = Color3.fromRGB(255, 255, 255)
+                    objectRoot.Material = Enum.Material.Plastic
                 end
             end
         end)
     end
-    TrackedBots = {}
+    TrackedObjects = {}
 end
 
--- الحلقة الرئيسية
-local BotsDetectionLoop = nil
-local function StartBotsLoop()
-    if BotsDetectionLoop then return end
-    BotsDetectionLoop = RunServiceService.Heartbeat:Connect(function()
-        if IsBotsHitboxOn then
+-- الحلقة الرئيسية (تفحص جميع الكائنات في workspace)
+local DetectionLoop = nil
+local function StartLoop()
+    if DetectionLoop then return end
+    DetectionLoop = RunServiceService.Heartbeat:Connect(function()
+        if IsHitboxActive then
             for _, gameObject in pairs(workspace:GetChildren()) do
                 if gameObject:IsA("Model") and gameObject:FindFirstChild("HumanoidRootPart") and gameObject:FindFirstChildOfClass("Humanoid") then
-                    local isRealPlayerObject = false
-                    for _, player in pairs(PlayersService:GetPlayers()) do
-                        if player.Character == gameObject then
-                            isRealPlayerObject = true
-                            break
-                        end
-                    end
-                    if not isRealPlayerObject then
-                        ApplyToBotsOnly(gameObject)
-                    end
+                    ApplyToObject(gameObject)
                 end
             end
         end
     end)
 end
 
-StartBotsLoop()
+StartLoop()
 
--- API للتحكم
-local BotsHitboxController = {}
+-- API للتحكم من الواجهة الرئيسية
+local HitboxController = {}
 
-function BotsHitboxController:SetEnabled(State)
-    IsBotsHitboxOn = State
+function HitboxController:SetEnabled(State)
+    IsHitboxActive = State
     if not State then
-        ClearAllBotsHitboxes()
+        ClearAllModifications()
     end
-    print("[BotsHitbox] State:", State)
+    print("[Hitbox] State:", State)
 end
 
-function BotsHitboxController:SetSize(SizeValue)
-    BotsHitboxData.BoxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
-    if IsBotsHitboxOn then
-        for bot, _ in pairs(TrackedBots) do
-            TrackedBots[bot] = nil
+function HitboxController:SetSize(SizeValue)
+    HitboxData.BoxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
+    if IsHitboxActive then
+        for obj, _ in pairs(TrackedObjects) do
+            TrackedObjects[obj] = nil
         end
-        print("[BotsHitbox] Size:", SizeValue)
+        print("[Hitbox] Size:", SizeValue)
     end
 end
 
-function BotsHitboxController:IsEnabled()
-    return IsBotsHitboxOn
+function HitboxController:IsEnabled()
+    return IsHitboxActive
 end
 
-function BotsHitboxController:GetSize()
-    return BotsHitboxData.BoxSize.X
+function HitboxController:GetSize()
+    return HitboxData.BoxSize.X
 end
 
-return BotsHitboxController
+return HitboxController
