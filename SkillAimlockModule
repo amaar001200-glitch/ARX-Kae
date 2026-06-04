@@ -1,5 +1,7 @@
 -- █ MODULE: SKILL AIMLOCK
 
+-- █ MODULE: SKILL AIMLOCK
+
 return function(env)
 
 local Config = env.Config
@@ -16,7 +18,7 @@ do
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
     local Enabled = false
-    local LockDuration = 0.5
+    local LockDuration = 1.0
     local MaxDistance = 300
 
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -24,7 +26,6 @@ do
     local aimlockActive = false
     local aimRenderConn = nil
     local aimTimeoutTask = nil
-    local currentTarget = nil  -- تمت الإضافة
 
     local function getNearestTarget()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -42,11 +43,6 @@ do
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
 
                 if ehrp and h and h.Health > 0 then
-                    -- تجنب الأصدقاء (نفس الفريق)
-                    if p.Team == LocalPlayer.Team then
-                        goto skip
-                    end
-                    
                     local dist = (ehrp.Position - hrp.Position).Magnitude
 
                     if dist < shortest then
@@ -55,7 +51,6 @@ do
                     end
                 end
             end
-            ::skip::
         end
 
         return nearest
@@ -80,7 +75,7 @@ do
     end
 
     local function startAimlock(target)
-        if not Enabled or not target then
+        if not Enabled or aimlockActive or not target then
             return
         end
 
@@ -90,21 +85,6 @@ do
             return
         end
 
-        -- إذا كان الـ Aimlock شغال على نفس الهدف، نحدّث المؤقت فقط
-        if aimlockActive and currentTarget == target then
-            if aimTimeoutTask then
-                task.cancel(aimTimeoutTask)
-            end
-            aimTimeoutTask = task.delay(LockDuration, function()
-                stopAimlock()
-            end)
-            return
-        end
-        
-        -- هدف جديد أو الـ Aimlock مو شغال
-        stopAimlock()
-        
-        currentTarget = target
         aimlockActive = true
 
         aimRenderConn = RunService.RenderStepped:Connect(function()
@@ -113,7 +93,7 @@ do
                 return
             end
 
-            local hrp = currentTarget and currentTarget:FindFirstChild("HumanoidRootPart")
+            local hrp = target:FindFirstChild("HumanoidRootPart")
 
             if hrp then
                 local camPos = Camera.CFrame.Position
@@ -161,6 +141,7 @@ do
 
     function SkillAimlockModule:SetEnabled(state)
         Enabled = state
+        -- حفظ الحالة في Config
         Config.SkillAimlockEnabled = state
         if not state then
             stopAimlock()
@@ -181,15 +162,15 @@ do
 
     function SkillAimlockModule:UpdateConfig()
         Enabled = Config.SkillAimlockEnabled
-        LockDuration = Config.SkillAimlockDuration or 0.5
+        LockDuration = Config.SkillAimlockDuration or 1
     end
 
+    -- تحديث الإعدادات من Config عند بدء التشغيل
     SkillAimlockModule:UpdateConfig()
 
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         char = newChar
         stopAimlock()
-        currentTarget = nil
     end)
 end
 
