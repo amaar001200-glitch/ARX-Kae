@@ -1,180 +1,74 @@
--- [[ Blox Fruits - BOTS HITBOX (Everything Except Real Players) ]] --
+-- [[ Blox Fruits - Custom Hitbox Visualizer & Combat Script ]] --
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
 
--- إعدادات صندوق التصادم (للبوتات وكل شيء)
-local BotsSettings = {
-    HitboxSize = Vector3.new(40, 40, 40),
-    HitboxTransparency = 0.5,
-    HitboxColor = Color3.fromRGB(0, 0, 0),
-    FillColor = Color3.fromRGB(128, 0, 255)
+-- إعدادات الـ Hitbox (يمكنك التعديل عليها حسب رغبتك)
+local Settings = {
+    HitboxSize = Vector3.new(20, 20, 20), -- حجم المربع (كلما زاد، زادت مسافة الضرب)
+    HitboxTransparency = 0.6,             -- شفافية المربع (0 مرئي بالكامل، 1 مخفي)
+    HitboxColor = Color3.fromRGB(255, 0, 0), -- لون المربع (أحمر)
+    KillAuraEnabled = true                 -- تفعيل الضرب التلقائي عند لمس المربع
 }
 
--- جلب الريموت
-local BotsRegisterHitRemote = nil
+-- استدعاء دوال اللعبة الأساسية التي تم تحديدها في الملفات
+local CombatController = nil
+local WeaponToolShared = nil
+
 pcall(function()
-    BotsRegisterHitRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
+    -- محاولة جلب وحدات التحكم بالقتال والأسلحة من الـ ReplicatedStorage
+    CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
+    WeaponToolShared = require(ReplicatedStorage:WaitForChild("SharedComponents"):WaitForChild("WeaponToolShared"))
 end)
 
-local IsBotsActive = false
-local TrackedBots = {}
-
--- دالة إضافة الـ SelectionBox
-local function addBotsSelectionBox(rootPart)
-    for _, child in pairs(rootPart:GetChildren()) do
-        if child:IsA("SelectionBox") and child.Name == "BotsHitboxFrame" then
-            child:Destroy()
-        end
-    end
-    
-    local selectionBox = Instance.new("SelectionBox")
-    selectionBox.Name = "BotsHitboxFrame"
-    selectionBox.Adornee = rootPart
-    selectionBox.Color3 = BotsSettings.HitboxColor
-    selectionBox.LineThickness = 0.1
-    selectionBox.Transparency = 0
-    selectionBox.SurfaceColor3 = BotsSettings.FillColor
-    selectionBox.SurfaceTransparency = 0.7
-    selectionBox.Parent = rootPart
-end
-
--- دالة تطبيق المربع (على كل شيء ما عدا اللاعبين الحقيقيين)
-local function applyBotsHitbox(character)
-    if not IsBotsActive then return end
-    if not character then return end
-    
-    -- منع التطبيق على اللاعبين الحقيقيين فقط
-    local isRealPlayer = false
-    for _, player in pairs(Players:GetPlayers()) do
-        if player.Character == character then
-            isRealPlayer = true
-            break
-        end
-    end
-    
-    -- إذا كان لاعب حقيقي، لا نطبق عليه
-    if isRealPlayer then return end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    
-    if rootPart and humanoid and humanoid.Health > 0 then
-        pcall(function()
-            rootPart.Size = BotsSettings.HitboxSize
-            rootPart.CanCollide = false
-            rootPart.Transparency = BotsSettings.HitboxTransparency
-            rootPart.Color = BotsSettings.FillColor
-            rootPart.Material = Enum.Material.ForceField
-            
-            addBotsSelectionBox(rootPart)
-        end)
+-- وظيفة تعديل وتكبير الـ Hitbox للخصم
+local function modifyHitbox(character)
+    if character and character.Name ~= LocalPlayer.Name then
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
         
-        if not TrackedBots[character] then
-            TrackedBots[character] = true
+        if rootPart and humanoid and humanoid.Health > 0 then
+            -- 1. تكبير حجم صندوق التصادم الأساسي (RootPart)
+            rootPart.Size = Settings.HitboxSize
+            rootPart.CanCollide = false -- لمنع حدوث مشاكل في الحركة أو التعثر بالخصم
             
-            local sizeConnection = nil
-            sizeConnection = rootPart:GetPropertyChangedSignal("Size"):Connect(function()
-                if IsBotsActive and rootPart and rootPart.Parent then
+            -- 2. تلوين المربع وتوضيحه برمجياً (Visualizer)
+            rootPart.Transparency = Settings.HitboxTransparency
+            rootPart.Color = Settings.HitboxColor
+            rootPart.Material = Enum.Material.ForceField -- تأثير متوهج مميز
+            
+            -- 3. تفعيل الضرب التلقائي (Kill Aura) إذا تم تفعيل الخيار وث ثبات الـ Hit Detection
+            if Settings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
+                -- محاكاة دالة كشف الضربات الخاصة باللعبة لتسجيل ضرر تلقائي
+                task.spawn(function()
                     pcall(function()
-                        if rootPart.Size ~= BotsSettings.HitboxSize then
-                            rootPart.Size = BotsSettings.HitboxSize
-                            addBotsSelectionBox(rootPart)
-                        end
+                        CombatController.runHitDetection(character)
                     end)
-                end
-            end)
-            
-            character.AncestryChanged:Connect(function()
-                if not character.Parent then
-                    TrackedBots[character] = nil
-                    if sizeConnection then sizeConnection:Disconnect() end
-                end
-            end)
-            
-            rootPart.Touched:Connect(function(hit)
-                if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
-                    if BotsRegisterHitRemote then
-                        pcall(function()
-                            BotsRegisterHitRemote:FireServer(rootPart, {}, nil, "747c0deb")
-                        end)
-                    end
-                end
-            end)
-        end
-    end
-end
-
--- مسح التعديلات
-local function clearAllBotsModifications()
-    for character, _ in pairs(TrackedBots) do
-        pcall(function()
-            if character and character.Parent then
-                local rootPart = character:FindFirstChild("HumanoidRootPart")
-                if rootPart then
-                    for _, child in pairs(rootPart:GetChildren()) do
-                        if child:IsA("SelectionBox") and child.Name == "BotsHitboxFrame" then
-                            child:Destroy()
-                        end
-                    end
-                    rootPart.Size = Vector3.new(2, 2, 1)
-                    rootPart.Transparency = 0
-                    rootPart.Color = Color3.fromRGB(255, 255, 255)
-                    rootPart.Material = Enum.Material.Plastic
-                end
-            end
-        end)
-    end
-    TrackedBots = {}
-end
-
--- الحلقة الرئيسية (تفحص كل شيء في workspace)
-local botsLoopConnection = nil
-local function startBotsLoop()
-    if botsLoopConnection then return end
-    botsLoopConnection = RunService.Heartbeat:Connect(function()
-        if IsBotsActive then
-            -- فحص جميع الكائنات في workspace
-            for _, object in pairs(workspace:GetChildren()) do
-                if object:IsA("Model") and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
-                    applyBotsHitbox(object)
-                end
+                end)
             end
         end
-    end)
-end
-
-startBotsLoop()
-
--- API للتحكم
-local BotsHitboxAPI = {}
-
-function BotsHitboxAPI:SetEnabled(State)
-    IsBotsActive = State
-    if not State then
-        clearAllBotsModifications()
     end
-    print("[BotsHitbox] SetEnabled:", State)
 end
 
-function BotsHitboxAPI:SetSize(SizeValue)
-    BotsSettings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
-    if IsBotsActive then
-        for char, _ in pairs(TrackedBots) do
-            TrackedBots[char] = nil
+-- حلقة تكرارية مستمرة لفحص جميع الأعداء واللاعبين وتطبيق السكربت عليهم
+RunService.RenderStepped:Connect(function()
+    -- الفحص أولاً في مجلدات الأعداء المخصصة باللعبة (Enemies / Characters)
+    local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
+    
+    if enemyFolder then
+        for _, enemy in pairs(enemyFolder:GetChildren()) do
+            modifyHitbox(enemy)
         end
-        print("[BotsHitbox] SetSize:", SizeValue)
+    else
+        -- في حال عدم وجود مجلد مخصص، يتم التطبيق على مجلد اللاعبين العام
+        for _, player in pairs(Players:GetPlayers()) do
+            if player.Character then
+                modifyHitbox(player.Character)
+            end
+        end
     end
-end
+end)
 
-function BotsHitboxAPI:IsEnabled()
-    return IsBotsActive
-end
-
-function BotsHitboxAPI:GetSize()
-    return BotsSettings.HitboxSize.X
-end
-
-return BotsHitboxAPI
+print("[+] تم تحميل سكربت الـ Hitbox بنجاح واستغلال ملفات القتال!")
