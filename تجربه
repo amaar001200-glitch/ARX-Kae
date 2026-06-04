@@ -1,237 +1,100 @@
---[[
-    Blox Fruits - Mega Hitbox Controller (Optimized Anti-Lag)
-    Version: 2.0 - FIXED
-    - إصلاح مشكلة عدم تطبيق المربع على جميع اللاعبين
-    - إضافة مربع مرئي بزوايا واضحة
-    - لون أسود شفاف
-]]
+-- [[ Blox Fruits - Optimized Mega Hitbox (Anti-Lag Version) ]] --
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
 
--- إعدادات المصنع
-local HitboxFactory = {
-    Active = false,
-    HitboxSize = Vector3.new(40, 40, 40),
-    HitboxTransparency = 0.5,
-    HitboxColor = Color3.fromRGB(0, 0, 0),
-    Running = false,
-    LoopConnection = nil,
-    ModifiedCharacters = {},
-    VisualBoxes = {}
+-- إعدادات صندوق التصادم العملاق
+local Settings = {
+    HitboxSize = Vector3.new(40, 40, 40), 
+    HitboxTransparency = 0.6,             
+    HitboxColor = Color3.fromRGB(0, 0, 0)  -- تم التغيير إلى الأسود
 }
 
--- جلب الريموت
+-- جلب الريموت المسؤول عن تسجيل الضربات
 local RegisterHitRemote = nil
 pcall(function()
-    RegisterHitRemote = ReplicatedStorage:FindFirstChild("Modules"):FindFirstChild("Net"):FindFirstChild("RE/RegisterHit")
+    RegisterHitRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
 end)
 
--- دالة إنشاء مربع مرئي واضح (بزوايا)
-local function createVisualBox(rootPart)
-    if HitboxFactory.VisualBoxes[rootPart] then
-        HitboxFactory.VisualBoxes[rootPart]:Destroy()
-        HitboxFactory.VisualBoxes[rootPart] = nil
-    end
-    
-    local selectionBox = Instance.new("SelectionBox")
-    selectionBox.Adornee = rootPart
-    selectionBox.Color3 = HitboxFactory.HitboxColor
-    selectionBox.LineThickness = 0.05
-    selectionBox.Transparency = HitboxFactory.HitboxTransparency
-    selectionBox.SurfaceColor3 = HitboxFactory.HitboxColor
-    selectionBox.SurfaceTransparency = 0.7
-    selectionBox.Parent = rootPart
-    
-    HitboxFactory.VisualBoxes[rootPart] = selectionBox
-    return selectionBox
-end
-
--- دالة تطبيق المربع على كائن (محسنة)
+-- دالة لتطبيق المربع العملاق بشكل آمن ولمرة واحدة فقط
 local function applyCustomHitbox(character)
-    if not HitboxFactory.Active then return end
     if not character or character == LocalPlayer.Character then return end
-    
-    -- انتظر قليلاً عشان يتأكد إن الشخصية جاهزة
-    task.wait(0.1)
     
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     
-    if rootPart and humanoid and humanoid.Health > 0 then
-        -- حتى لو مطبق قبل، نحدث الحجم (لأنه ممكن يتغير)
-        pcall(function()
-            rootPart.Size = HitboxFactory.HitboxSize
-            rootPart.CanCollide = false
-            rootPart.Transparency = 1  -- نخفي الجزء الأصلي
-            rootPart.Material = Enum.Material.SmoothPlastic
-            
-            -- المربع المرئي الواضح
-            createVisualBox(rootPart)
-        end)
+    -- التحقق من أن الخصم حي، ولم يتم تعديل الـ Hitbox الخاص به من قبل (لمنع الـ Lag)
+    if rootPart and humanoid and humanoid.Health > 0 and not rootPart:GetAttribute("HitboxModified") then
         
-        if not HitboxFactory.ModifiedCharacters[rootPart] then
-            HitboxFactory.ModifiedCharacters[rootPart] = true
-            
-            rootPart.Touched:Connect(function(hit)
-                if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
-                    if RegisterHitRemote then
-                        pcall(function()
-                            RegisterHitRemote:FireServer(rootPart, {}, nil, "747c0deb")
-                        end)
-                    end
+        -- وضع علامة لمنع إعادة تكرار الكود على نفس الخصم
+        rootPart:SetAttribute("HitboxModified", true)
+        
+        -- تطبيق الحجم والخصائص المرئية
+        rootPart.Size = Settings.HitboxSize
+        rootPart.CanCollide = false
+        rootPart.Transparency = Settings.HitboxTransparency
+        rootPart.Color = Settings.HitboxColor
+        rootPart.Material = Enum.Material.ForceField
+        
+        -- إنشاء حدث اللمس مرة واحدة فقط (يمنع الـ Memory Leak تماماً)
+        rootPart.Touched:Connect(function(hit)
+            if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
+                if RegisterHitRemote then
+                    pcall(function()
+                        RegisterHitRemote:FireServer(rootPart, {}, nil, "747c0deb")
+                    end)
                 end
-            end)
-        end
-    else
-        -- إذا ما لقى الـ HumanoidRootPart، جرب مرة ثانية بعد شوي
-        task.delay(0.5, function()
-            if HitboxFactory.Active and character and character.Parent then
-                applyCustomHitbox(character)
             end
         end)
     end
 end
 
--- دالة مسح التعديلات عن كل الشخصيات
-local function clearAllModifications()
-    for rootPart, _ in pairs(HitboxFactory.ModifiedCharacters) do
-        pcall(function()
-            if rootPart and rootPart.Parent then
-                rootPart.Size = Vector3.new(2, 2, 1)
-                rootPart.Transparency = 0
-                rootPart.Color = Color3.fromRGB(255, 255, 255)
-                rootPart.Material = Enum.Material.Plastic
-            end
-        end)
-    end
-    
-    -- حذف المربعات المرئية
-    for rootPart, box in pairs(HitboxFactory.VisualBoxes) do
-        pcall(function() box:Destroy() end)
-    end
-    
-    HitboxFactory.ModifiedCharacters = {}
-    HitboxFactory.VisualBoxes = {}
+-- دالة لتحديث الحجم من الـ GUI
+local function UpdateSize(NewSize)
+    Settings.HitboxSize = Vector3.new(NewSize, NewSize, NewSize)
 end
 
--- مراقبة اللاعبين الجدد
-local function setupNewPlayer(player)
-    if player == LocalPlayer then return end
-    
-    -- إذا دخل لاعب جديد وهو التفعيل شغال
-    if HitboxFactory.Active then
-        task.delay(1, function()
-            if player.Character then
-                applyCustomHitbox(player.Character)
-            end
-        end)
-    end
-    
-    -- مراقبة وقت ظهور الشخصية
-    player.CharacterAdded:Connect(function(character)
-        if HitboxFactory.Active then
-            task.delay(0.5, function()
-                applyCustomHitbox(character)
-            end)
-        end
-    end)
+-- دالة لتشغيل/إيقاف السكريبت
+local IsActive = true
+local function SetActive(State)
+    IsActive = State
 end
 
--- الحلقة الرئيسية (محسنة)
-local function startLoop()
-    if HitboxFactory.Running then return end
-    HitboxFactory.Running = true
-    
-    HitboxFactory.LoopConnection = task.spawn(function()
-        while HitboxFactory.Running and HitboxFactory.Active do
-            -- تطبيق على جميع اللاعبين
+-- دالة للتحقق إذا كان مفعل
+local function IsEnabled()
+    return IsActive
+end
+
+-- تشغيل الفحص في خلفية اللعبة بشكل ذكي وخفيف (مرة كل ثانية)
+task.spawn(function()
+    while true do
+        if IsActive then
+            -- 1. فحص اللاعبين الحقيقيين
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character then
                     applyCustomHitbox(player.Character)
                 end
             end
             
-            -- تطبيق على الأعداء والبوتات
+            -- 2. فحص الأعداء والبوتات في الـ Workspace
             for _, object in pairs(workspace:GetChildren()) do
-                if object:IsA("Model") and object ~= LocalPlayer.Character then
-                    local rootPart = object:FindFirstChild("HumanoidRootPart")
-                    local humanoid = object:FindFirstChildOfClass("Humanoid")
-                    if rootPart and humanoid and humanoid.Health > 0 then
-                        -- نتأكد إنه مو لاعب عادي عشان لا نكرر
-                        local isPlayer = false
-                        for _, player in pairs(Players:GetPlayers()) do
-                            if player.Character == object then
-                                isPlayer = true
-                                break
-                            end
-                        end
-                        if not isPlayer then
-                            applyCustomHitbox(object)
-                        end
-                    end
+                if object:IsA("Model") and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
+                    applyCustomHitbox(object)
                 end
             end
-            
-            task.wait(0.3)  -- أسرع شوي عشان يستجيب أسرع
         end
-    end)
-end
-
--- إعداد مراقبة اللاعبين الجدد
-for _, player in pairs(Players:GetPlayers()) do
-    setupNewPlayer(player)
-end
-Players.PlayerAdded:Connect(setupNewPlayer)
-
--- API العامة للموديول
-local HitboxAPI = {}
-
-function HitboxAPI:SetEnabled(State)
-    if State == HitboxFactory.Active then return end
-    HitboxFactory.Active = State
-    
-    if State then
-        clearAllModifications()
-        startLoop()
-        print("[Hitbox] تم تفعيل المربعات العملاقة (لون أسود شفاف)")
-    else
-        HitboxFactory.Running = false
-        if HitboxFactory.LoopConnection then
-            task.cancel(HitboxFactory.LoopConnection)
-            HitboxFactory.LoopConnection = nil
-        end
-        clearAllModifications()
-        print("[Hitbox] تم إلغاء المربعات العملاقة")
+        task.wait(1) -- فترة راحة للمعالج تمنع هبوط الفريمات نهائياً
     end
-end
+end)
 
-function HitboxAPI:SetSize(SizeValue)
-    HitboxFactory.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
-    if HitboxFactory.Active then
-        clearAllModifications()
-        print("[Hitbox] تم تغيير الحجم إلى " .. SizeValue .. "، جاري إعادة التطبيق...")
-    end
-end
+-- API للربط مع الـ GUI الرئيسي
+local API = {
+    SetEnabled = SetActive,
+    SetSize = UpdateSize,
+    IsEnabled = IsEnabled
+}
 
-function HitboxAPI:GetSize()
-    return HitboxFactory.HitboxSize.X
-end
+return API
 
-function HitboxAPI:IsEnabled()
-    return HitboxFactory.Active
-end
-
-function HitboxAPI:Stop()
-    HitboxFactory.Active = false
-    HitboxFactory.Running = false
-    if HitboxFactory.LoopConnection then
-        task.cancel(HitboxFactory.LoopConnection)
-        HitboxFactory.LoopConnection = nil
-    end
-    clearAllModifications()
-end
-
-return HitboxAPI
+print("[+] تم تشغيل السكربت المحسن بنجاح! الفريمات الآن مستقرة وثابتة.")
