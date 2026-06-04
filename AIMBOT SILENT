@@ -1,6 +1,6 @@
 -- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
 -- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام
--- تم الإضافة: نظام تجنب الأصدقاء والتحالفات
+-- تم التعديل: فقط يتجنب الأصدقاء والتحالفات (حسب الفريق)
 
 local AimbotModule = {}
 
@@ -20,75 +20,9 @@ do
     }
 
     -- ==================================================
-    -- نظام تجنب الأصدقاء والتحالفات (تمت الإضافة)
+    -- فقط التحقق من العدو/الصديق حسب الفريق
     -- ==================================================
     
-    local IgnoreCache = {}  -- قائمة اللاعبين المتجنبين مؤقتاً
-    local SafeCache = {}    -- قائمة اللاعبين في مناطق آمنة
-    
-    -- دالة للتحقق من وجود منطقة حماية أو تحالف
-    local function HasSafeZone(plr)
-        if SafeCache[plr] and tick() < SafeCache[plr] then
-            return true
-        end
-        
-        local char = plr.Character
-        if not char then
-            return true
-        end
-        
-        -- التحقق من وجود ForceField (حماية)
-        if char:FindFirstChildOfClass("ForceField") then
-            SafeCache[plr] = tick() + 25
-            return true
-        end
-        
-        -- التحقق من Attributes الخاصة بالحماية والتحالفات
-        local attrs = {
-            "SafeZone",
-            "InSafeZone", 
-            "NoPvP",
-            "PvPDisabled",
-            "PvpDisabled",
-            "Passive",
-            "Protected",
-            "CombatDisabled",
-            "Allied",        -- تحالف
-            "Ally",          -- تحالف
-            "TeamProtection" -- حماية الفريق
-        }
-        
-        for _, a in ipairs(attrs) do
-            local ok, val = pcall(function()
-                return plr:GetAttribute(a)
-            end)
-            if ok and val == true then
-                SafeCache[plr] = tick() + 25
-                return true
-            end
-        end
-        
-        -- التحقق من الأجزاء الآمنة في الخريطة
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("BasePart") then
-                local n = string.lower(v.Name)
-                if string.find(n, "safe") or string.find(n, "spawn") or string.find(n, "peace") or string.find(n, "protection") or string.find(n, "ally") then
-                    local ehrp = char:FindFirstChild("HumanoidRootPart")
-                    if ehrp then
-                        local dist = (v.Position - ehrp.Position).Magnitude
-                        if dist <= 120 then
-                            SafeCache[plr] = tick() + 25
-                            return true
-                        end
-                    end
-                end
-            end
-        end
-        
-        return false
-    end
-    
-    -- دالة التحقق من صحة الهدف (عدو وليس صديق)
     local function IsValidEnemy(plr)
         if not plr then
             return false
@@ -99,9 +33,9 @@ do
             return false
         end
         
-        -- التحقق من الفريق (نفس الفريق = صديق)
+        -- نفس الفريق = صديق -> يتجنبه
         if plr.Team == player.Team then
-            return false  -- يتجنب الأصدقاء تماماً
+            return false
         end
         
         -- التحقق إذا كان الهدف على قيد الحياة
@@ -112,17 +46,6 @@ do
         
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then
-            return false
-        end
-        
-        -- التحقق من قائمة التجنب المؤقت
-        if IgnoreCache[plr] and tick() < IgnoreCache[plr] then
-            return false
-        end
-        
-        -- التحقق من مناطق الحماية والتحالفات
-        if HasSafeZone(plr) then
-            IgnoreCache[plr] = tick() + 25  -- يتجنب اللاعب لمدة 25 ثانية
             return false
         end
         
@@ -139,7 +62,6 @@ do
     TargetLine.Transparency = 1
     TargetLine.Visible = false
 
-    -- دالة للحصول على أقرب عدو (تم تعديلها لاستخدام IsValidEnemy)
     local function GetNearestEnemy()
         local char = player.Character
         if not char then return nil end
@@ -148,7 +70,6 @@ do
         local nearest = nil
         local nearestDist = AimbotConfig.MaxDistance
         for _, pl in ipairs(Players:GetPlayers()) do
-            -- استخدام دالة التحقق من العدو بدلاً من التحقق البسيط
             if IsValidEnemy(pl) then
                 local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
                 local hum = pl.Character:FindFirstChildOfClass("Humanoid")
@@ -164,7 +85,6 @@ do
         return nearest
     end
 
-    -- Update target every 0.1 seconds instead of every frame
     task.spawn(function()
         while true do
             if getgenv().AimbotActive then
@@ -239,7 +159,6 @@ do
         return oldNamecall(self, ...)
     end)
 
-    -- Update hitboxes every 0.2 seconds (optimized)
     local lastHitboxUpdate = 0
     RunService.Heartbeat:Connect(function()
         if not getgenv().AimbotActive then return end
@@ -251,7 +170,6 @@ do
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
         for _, pl in ipairs(Players:GetPlayers()) do
-            -- استخدام IsValidEnemy للتأكد من أننا نتعامل مع عدو فقط
             if IsValidEnemy(pl) then
                 local enemyChar = pl.Character
                 if enemyChar then
@@ -273,7 +191,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] INVISIBLE HITBOX & ANGLE FIX LOADED - مع نظام تجنب الأصدقاء")
+    print("[ARAKS HUB] INVISIBLE HITBOX & ANGLE FIX LOADED - يتجنب الأصدقاء فقط")
 
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
