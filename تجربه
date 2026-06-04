@@ -8,8 +8,9 @@ local RunService = game:GetService("RunService")
 -- إعدادات صندوق التصادم العملاق
 local Settings = {
     HitboxSize = Vector3.new(40, 40, 40),
-    HitboxTransparency = 0.6,
-    HitboxColor = Color3.fromRGB(0, 0, 0)
+    HitboxTransparency = 0.5,
+    HitboxColor = Color3.fromRGB(0, 0, 0),  -- أسود
+    FillColor = Color3.fromRGB(128, 0, 255) -- بنفسجي
 }
 
 -- جلب الريموت المسؤول عن تسجيل الضربات
@@ -32,11 +33,25 @@ local function applyCustomHitbox(character)
     if rootPart and humanoid and humanoid.Health > 0 and not rootPart:GetAttribute("HitboxModified") then
         rootPart:SetAttribute("HitboxModified", true)
         
+        -- تطبيق الحجم والخصائص المرئية
         rootPart.Size = Settings.HitboxSize
         rootPart.CanCollide = false
         rootPart.Transparency = Settings.HitboxTransparency
-        rootPart.Color = Settings.HitboxColor
+        rootPart.Color = Settings.FillColor  -- بنفسجي شفاف
         rootPart.Material = Enum.Material.ForceField
+        
+        -- إضافة SelectionBox للأطراف السوداء
+        local selectionBox = Instance.new("SelectionBox")
+        selectionBox.Adornee = rootPart
+        selectionBox.Color3 = Settings.HitboxColor  -- أسود
+        selectionBox.LineThickness = 0.1
+        selectionBox.Transparency = 0
+        selectionBox.SurfaceColor3 = Settings.FillColor
+        selectionBox.SurfaceTransparency = 0.7
+        selectionBox.Parent = rootPart
+        
+        -- حفظ الـ SelectionBox عشان نمسحه بعدين
+        rootPart:SetAttribute("HasSelectionBox", true)
         
         rootPart.Touched:Connect(function(hit)
             if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
@@ -57,6 +72,12 @@ local function clearAllModifications()
             local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
             if rootPart then
                 pcall(function()
+                    -- مسح الـ SelectionBox
+                    for _, child in pairs(rootPart:GetChildren()) do
+                        if child:IsA("SelectionBox") then
+                            child:Destroy()
+                        end
+                    end
                     rootPart:SetAttribute("HitboxModified", nil)
                     rootPart.Size = Vector3.new(2, 2, 1)
                     rootPart.Transparency = 0
