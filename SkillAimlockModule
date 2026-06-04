@@ -1,4 +1,4 @@
--- █ MODULE: SKILL AIMLOCK (FIXED - المستمر)
+-- █ MODULE: SKILL AIMLOCK (FIXED - مراقبة المفاتيح المباشرة)
 
 return function(env)
 
@@ -20,12 +20,25 @@ do
     local MaxDistance = 300
 
     -- متغيرات للضغط المستمر
-    local activeSkills = {}  -- تخزين المهارات التي يتم الضغط عليها حالياً
+    local activeKeys = {}     -- المفاتيح المضغوطة حالياً
     local currentTarget = nil
     local aimRenderConn = nil
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    
+    -- قائمة المفاتيح التي نهتم بها (المهارات)
+    local TrackedKeys = {
+        [Enum.KeyCode.Z] = "Z",
+        [Enum.KeyCode.X] = "X",
+        [Enum.KeyCode.C] = "C",
+        [Enum.KeyCode.V] = "V",
+        [Enum.KeyCode.F] = "F",
+        [Enum.KeyCode.One] = "One",
+        [Enum.KeyCode.Two] = "Two",
+        [Enum.KeyCode.Three] = "Three",
+        [Enum.KeyCode.Four] = "Four",
+    }
 
-    -- دالة للحصول على أقرب هدف
+    -- دالة للحصول على أقرب هدف (مع تجنب الأصدقاء)
     local function getNearestTarget()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then
@@ -41,9 +54,9 @@ do
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
 
                 if ehrp and h and h.Health > 0 then
-                    -- التحقق من الصديق والتحالف حسب الفريق
+                    -- تجنب الأصدقاء (نفس الفريق)
                     if p.Team == LocalPlayer.Team then
-                        -- نفس الفريق = صديق -> يتجنبه
+                        -- إذا كان تفادي الأصدقاء مفعلاً
                         if Config.AvoidFriends then
                             goto skip
                         end
@@ -95,16 +108,19 @@ do
                 return
             end
             
-            -- التحقق من وجود المهارات النشطة
-            local hasActiveSkill = false
-            for skill, isActive in pairs(activeSkills) do
-                if isActive then
-                    hasActiveSkill = true
-                    break
+            -- التحقق من وجود أي مفتاح مهارة مضغوط
+            local hasActiveKey = false
+            for keyCode, isPressed in pairs(activeKeys) do
+                if isPressed then
+                    local skillName = TrackedKeys[keyCode]
+                    if skillName and Config["Skill" .. skillName] then
+                        hasActiveKey = true
+                        break
+                    end
                 end
             end
             
-            if not hasActiveSkill then
+            if not hasActiveKey then
                 stopAimlock()
                 return
             end
@@ -129,15 +145,77 @@ do
             Camera.CFrame = CFrame.new(camPos, targetHRP.Position)
         end)
     end
+    
+    -- دالة لفحص وتحديث حالة الـ Aimlock بناءً على المفاتيح النشطة
+    local function updateAimlockState()
+        if not Enabled then
+            stopAimlock()
+            return
+        end
+        
+        -- البحث عن أي مفتاح مهارة نشط ومفعل في الـ Config
+        local anyActiveSkill = false
+        for keyCode, isPressed in pairs(activeKeys) do
+            if isPressed then
+                local skillName = TrackedKeys[keyCode]
+                if skillName and Config["Skill" .. skillName] then
+                    anyActiveSkill = true
+                    break
+                end
+            end
+        end
+        
+        if anyActiveSkill then
+            -- يوجد مفتاح مهارة نشط، شغل الـ Aimlock إذا ما كان شغال
+            if not aimRenderConn then
+                local target = getNearestTarget()
+                if target then
+                    startAimlock(target)
+                end
+            end
+        else
+            -- ما فيه مفتاح نشط، أوقف الـ Aimlock
+            stopAimlock()
+        end
+    end
 
-    -- هوك المهارات
+    -- ==================================================
+    -- مراقبة المفاتيح مباشرة
+    -- ==================================================
+    
+    -- حدث الضغط على المفتاح
+    local function onInputBegan(input, gameProcessed)
+        if gameProcessed then return end
+        
+        local keyCode = input.KeyCode
+        local skillName = TrackedKeys[keyCode]
+        
+        if skillName and Config["Skill" .. skillName] then
+            activeKeys[keyCode] = true
+            updateAimlockState()
+        end
+    end
+    
+    -- حدث رفع الإصبع عن المفتاح
+    local function onInputEnded(input, gameProcessed)
+        local keyCode = input.KeyCode
+        local skillName = TrackedKeys[keyCode]
+        
+        if skillName then
+            activeKeys[keyCode] = false
+            updateAimlockState()
+        end
+    end
+    
+    -- ربط الأحداث
+    UserInputService.InputBegan:Connect(onInputBegan)
+    UserInputService.InputEnded:Connect(onInputEnded)
+
+    -- هوك المهارات (احتياطي لبعض السيرفرات)
     if not getgenv().SkillAimlock_Hooked then
         getgenv().SkillAimlock_Hooked = true
 
         local oldNamecall
-        local oldIndex
-
-        -- هوك لالتقاط استدعاءات المهارات
         oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
@@ -147,95 +225,29 @@ do
 
                 if typeof(a1) == "string" then
                     local skillKey = a1:upper()
-
                     if Config["Skill" .. skillKey] then
-                        task.spawn(function()
+                        -- فقط نتأكد أن الـ Aimlock شغال
+                        if not aimRenderConn then
                             local target = getNearestTarget()
                             if target then
                                 startAimlock(target)
                             end
-                        end)
+                        end
                     end
                 end
             end
 
             return oldNamecall(self, ...)
         end)
-        
-        -- هوك لالتقاط انتهاء المهارة (عندما يرفع اللاعب إصبعه عن المفتاح)
-        -- هذا يعتمد على VirtualInputManager أو استخدام InputEnded
-        local function onInputEnded(input, gameProcessed)
-            if gameProcessed then return end
-            
-            -- التحقق من المفاتيح المرتبطة بالمهارات
-            local keyMap = {
-                [Enum.KeyCode.Z] = "Z",
-                [Enum.KeyCode.X] = "X", 
-                [Enum.KeyCode.C] = "C",
-                [Enum.KeyCode.V] = "V",
-                [Enum.KeyCode.F] = "F",
-                [Enum.KeyCode.One] = "ONE",
-                [Enum.KeyCode.Two] = "TWO",
-                [Enum.KeyCode.Three] = "THREE",
-                [Enum.KeyCode.Four] = "FOUR"
-            }
-            
-            local skillName = keyMap[input.KeyCode]
-            if skillName and activeSkills[skillName] then
-                activeSkills[skillName] = false
-                -- التحقق إذا لم يعد هناك أي مهارة نشطة
-                local anyActive = false
-                for _, active in pairs(activeSkills) do
-                    if active then
-                        anyActive = true
-                        break
-                    end
-                end
-                if not anyActive then
-                    stopAimlock()
-                end
-            end
-        end
-        
-        -- ربط حدث انتهاء الضغط
-        UserInputService.InputEnded:Connect(onInputEnded)
     end
 
-    -- دالة لتسجيل بداية الضغط على مهارة (يتم استدعاؤها من مكان آخر)
-    function SkillAimlockModule:RegisterSkillPress(skillKey)
-        if not Enabled then return end
-        activeSkills[skillKey] = true
-        
-        -- بدء الـ Aimlock على أقرب هدف
-        local target = getNearestTarget()
-        if target then
-            startAimlock(target)
-        end
-    end
-    
-    -- دالة لتسجيل انتهاء الضغط على مهارة
-    function SkillAimlockModule:RegisterSkillRelease(skillKey)
-        activeSkills[skillKey] = false
-        
-        -- التحقق إذا لم يعد هناك أي مهارة نشطة
-        local anyActive = false
-        for _, active in pairs(activeSkills) do
-            if active then
-                anyActive = true
-                break
-            end
-        end
-        if not anyActive then
-            stopAimlock()
-        end
-    end
-
+    -- دوال التحكم
     function SkillAimlockModule:SetEnabled(state)
         Enabled = state
         Config.SkillAimlockEnabled = state
         if not state then
             stopAimlock()
-            activeSkills = {}
+            activeKeys = {}
         end
     end
 
@@ -251,13 +263,13 @@ do
         Enabled = Config.SkillAimlockEnabled
     end
 
-    -- تحديث الإعدادات من Config عند بدء التشغيل
+    -- تحديث الإعدادات من Config
     SkillAimlockModule:UpdateConfig()
 
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         char = newChar
         stopAimlock()
-        activeSkills = {}
+        activeKeys = {}
     end)
 end
 
