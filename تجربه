@@ -3,12 +3,13 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 
 -- إعدادات صندوق التصادم العملاق
 local Settings = {
-    HitboxSize = Vector3.new(40, 40, 40), 
-    HitboxTransparency = 0.6,             
-    HitboxColor = Color3.fromRGB(0, 0, 0)  -- تم التغيير إلى الأسود
+    HitboxSize = Vector3.new(40, 40, 40),
+    HitboxTransparency = 0.6,
+    HitboxColor = Color3.fromRGB(0, 0, 0)
 }
 
 -- جلب الريموت المسؤول عن تسجيل الضربات
@@ -17,27 +18,26 @@ pcall(function()
     RegisterHitRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
 end)
 
--- دالة لتطبيق المربع العملاق بشكل آمن ولمرة واحدة فقط
+-- حالة التشغيل
+local IsActive = true
+
+-- دالة لتطبيق المربع العملاق
 local function applyCustomHitbox(character)
+    if not IsActive then return end
     if not character or character == LocalPlayer.Character then return end
     
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     
-    -- التحقق من أن الخصم حي، ولم يتم تعديل الـ Hitbox الخاص به من قبل (لمنع الـ Lag)
     if rootPart and humanoid and humanoid.Health > 0 and not rootPart:GetAttribute("HitboxModified") then
-        
-        -- وضع علامة لمنع إعادة تكرار الكود على نفس الخصم
         rootPart:SetAttribute("HitboxModified", true)
         
-        -- تطبيق الحجم والخصائص المرئية
         rootPart.Size = Settings.HitboxSize
         rootPart.CanCollide = false
         rootPart.Transparency = Settings.HitboxTransparency
         rootPart.Color = Settings.HitboxColor
         rootPart.Material = Enum.Material.ForceField
         
-        -- إنشاء حدث اللمس مرة واحدة فقط (يمنع الـ Memory Leak تماماً)
         rootPart.Touched:Connect(function(hit)
             if hit.Parent and hit.Parent:IsA("Tool") and hit.Parent.Parent == LocalPlayer.Character then
                 if RegisterHitRemote then
@@ -50,51 +50,71 @@ local function applyCustomHitbox(character)
     end
 end
 
--- دالة لتحديث الحجم من الـ GUI
-local function UpdateSize(NewSize)
-    Settings.HitboxSize = Vector3.new(NewSize, NewSize, NewSize)
+-- مسح التعديلات
+local function clearAllModifications()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                pcall(function()
+                    rootPart:SetAttribute("HitboxModified", nil)
+                    rootPart.Size = Vector3.new(2, 2, 1)
+                    rootPart.Transparency = 0
+                    rootPart.Color = Color3.fromRGB(255, 255, 255)
+                    rootPart.Material = Enum.Material.Plastic
+                end)
+            end
+        end
+    end
 end
 
--- دالة لتشغيل/إيقاف السكريبت
-local IsActive = true
-local function SetActive(State)
-    IsActive = State
-end
-
--- دالة للتحقق إذا كان مفعل
-local function IsEnabled()
-    return IsActive
-end
-
--- تشغيل الفحص في خلفية اللعبة بشكل ذكي وخفيف (مرة كل ثانية)
-task.spawn(function()
-    while true do
+-- الحلقة الرئيسية
+local loopConnection = nil
+local function startLoop()
+    if loopConnection then return end
+    loopConnection = RunService.Heartbeat:Connect(function()
         if IsActive then
-            -- 1. فحص اللاعبين الحقيقيين
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character then
                     applyCustomHitbox(player.Character)
                 end
             end
-            
-            -- 2. فحص الأعداء والبوتات في الـ Workspace
             for _, object in pairs(workspace:GetChildren()) do
                 if object:IsA("Model") and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
                     applyCustomHitbox(object)
                 end
             end
         end
-        task.wait(1) -- فترة راحة للمعالج تمنع هبوط الفريمات نهائياً
+    end)
+end
+
+startLoop()
+
+-- API للتحكم من الـ GUI
+local HitboxAPI = {}
+
+function HitboxAPI:SetEnabled(State)
+    IsActive = State
+    if not State then
+        clearAllModifications()
     end
-end)
+    print("[Hitbox] SetEnabled:", State)
+end
 
--- API للربط مع الـ GUI الرئيسي
-local API = {
-    SetEnabled = SetActive,
-    SetSize = UpdateSize,
-    IsEnabled = IsEnabled
-}
+function HitboxAPI:SetSize(SizeValue)
+    Settings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
+    if IsActive then
+        clearAllModifications()
+    end
+    print("[Hitbox] SetSize:", SizeValue)
+end
 
-return API
+function HitboxAPI:IsEnabled()
+    return IsActive
+end
 
-print("[+] تم تشغيل السكربت المحسن بنجاح! الفريمات الآن مستقرة وثابتة.")
+function HitboxAPI:GetSize()
+    return Settings.HitboxSize.X
+end
+
+return HitboxAPI
