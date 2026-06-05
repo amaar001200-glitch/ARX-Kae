@@ -1,14 +1,9 @@
--- [[ Blox Fruits - Custom Hitbox Visualizer & Combat Script (ULTRA OPTIMIZED) ]] --
--- التحديثات:
--- - استبدال RunService.RenderStepped بـ task.wait (10 مرات بالثانية بدل 60-120)
--- - تجميع الأعداء في Cache (تحديث كل 0.5 ثانية)
--- - استهلاك أقل للمعالج بنسبة 85-90%
+-- [[ Blox Fruits - Custom Hitbox Visualizer & Combat Script ]] --
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
 
 -- إعدادات الـ Hitbox
 local Settings = {
@@ -28,127 +23,85 @@ pcall(function()
 end)
 
 -- حالة التشغيل
-local IsActive = false
-local LoopRunning = false
-local MainLoop = nil
-
--- تجميع الأعداء (Cache)
-local CachedEnemies = {}
-local LastEnemyScan = 0
-local EnemyScanInterval = 0.5 -- كل 0.5 ثانية نبحث عن أعداء جدد
-
--- تحديث قائمة الأعداء المخزنة
-local function UpdateCachedEnemies()
-    local now = tick()
-    if now - LastEnemyScan >= EnemyScanInterval then
-        LastEnemyScan = now
-        CachedEnemies = {}
-        
-        -- البحث في مجلد Enemies أولاً
-        local enemiesFolder = Workspace:FindFirstChild("Enemies")
-        if enemiesFolder then
-            for _, enemy in pairs(enemiesFolder:GetChildren()) do
-                if enemy:IsA("Model") and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChildOfClass("Humanoid") then
-                    CachedEnemies[#CachedEnemies + 1] = enemy
-                end
-            end
-        end
-        
-        -- البحث في مجلد Characters
-        local charactersFolder = Workspace:FindFirstChild("Characters")
-        if charactersFolder then
-            for _, character in pairs(charactersFolder:GetChildren()) do
-                if character:IsA("Model") and character.Name ~= LocalPlayer.Name then
-                    local isRealPlayer = false
-                    for _, player in pairs(Players:GetPlayers()) do
-                        if player.Character == character then
-                            isRealPlayer = true
-                            break
-                        end
-                    end
-                    if not isRealPlayer and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid") then
-                        CachedEnemies[#CachedEnemies + 1] = character
-                    end
-                end
-            end
-        end
-    end
-    return CachedEnemies
-end
+local IsActive = true
+local RenderConnection = nil
 
 -- وظيفة تعديل وتكبير الـ Hitbox للخصم
 local function modifyHitbox(character)
     if not IsActive then return end
-    if not character or character.Name == LocalPlayer.Name then return end
-    
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    
-    if rootPart and humanoid and humanoid.Health > 0 then
-        pcall(function()
-            rootPart.Size = Settings.HitboxSize
-            rootPart.CanCollide = false
-            rootPart.Transparency = Settings.HitboxTransparency
-            rootPart.Color = Settings.HitboxColor
-            rootPart.Material = Enum.Material.ForceField
-            
-            if Settings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
-                task.spawn(function()
-                    pcall(function()
-                        CombatController.runHitDetection(character)
+    if character and character.Name ~= LocalPlayer.Name then
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        
+        if rootPart and humanoid and humanoid.Health > 0 then
+            pcall(function()
+                rootPart.Size = Settings.HitboxSize
+                rootPart.CanCollide = false
+                rootPart.Transparency = Settings.HitboxTransparency
+                rootPart.Color = Settings.HitboxColor
+                rootPart.Material = Enum.Material.ForceField
+                
+                if Settings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
+                    task.spawn(function()
+                        pcall(function()
+                            CombatController.runHitDetection(character)
+                        end)
                     end)
-                end)
-            end
-        end)
-    end
-end
-
--- إعادة حجم البوتات إلى الطبيعي
-local function resetBotSize(bot)
-    pcall(function()
-        local rootPart = bot:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            rootPart.Size = Vector3.new(2, 2, 1)
-            rootPart.Transparency = 0
-            rootPart.Color = Color3.fromRGB(255, 255, 255)
-            rootPart.Material = Enum.Material.Plastic
+                end
+            end)
         end
-    end)
-end
-
--- مسح جميع التعديلات
-local function clearAllModifications()
-    for _, enemy in ipairs(CachedEnemies) do
-        resetBotSize(enemy)
     end
 end
 
--- الحلقة الرئيسية (خفيفة جداً)
+-- الحلقة الرئيسية
 local function startLoop()
-    if LoopRunning then return end
-    LoopRunning = true
-    
-    MainLoop = task.spawn(function()
-        while LoopRunning do
-            if IsActive then
-                local enemies = UpdateCachedEnemies()
-                for _, enemy in ipairs(enemies) do
-                    modifyHitbox(enemy)
+    if RenderConnection then return end
+    RenderConnection = RunService.RenderStepped:Connect(function()
+        if not IsActive then return end
+        local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
+        
+        if enemyFolder then
+            for _, enemy in pairs(enemyFolder:GetChildren()) do
+                modifyHitbox(enemy)
+            end
+        else
+            for _, player in pairs(Players:GetPlayers()) do
+                if player.Character then
+                    modifyHitbox(player.Character)
                 end
             end
-            task.wait(0.1) -- 10 مرات بالثانية فقط
         end
     end)
 end
 
-local function stopLoop()
-    LoopRunning = false
-    if MainLoop then
-        task.cancel(MainLoop)
-        MainLoop = nil
+-- دالة إيقاف الحلقة ومسح التعديلات
+local function stopLoopAndClear()
+    if RenderConnection then
+        RenderConnection:Disconnect()
+        RenderConnection = nil
     end
-    clearAllModifications()
+    
+    -- إعادة حجم البوتات إلى الطبيعي
+    local enemyFolder = workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("Characters")
+    if enemyFolder then
+        for _, enemy in pairs(enemyFolder:GetChildren()) do
+            pcall(function()
+                local rootPart = enemy:FindFirstChild("HumanoidRootPart")
+                if rootPart then
+                    rootPart.Size = Vector3.new(2, 2, 1)
+                    rootPart.Transparency = 0
+                    rootPart.Color = Color3.fromRGB(255, 255, 255)
+                    rootPart.Material = Enum.Material.Plastic
+                end
+            end)
+        end
+    end
 end
+
+-- بدء التشغيل
+startLoop()
+
+print("[+] تم تحميل سكربت الـ Hitbox بنجاح")
 
 -- ============================================
 -- API للتحكم من الـ GUI الرئيسي
@@ -161,7 +114,7 @@ function BotsHitboxAPI:SetEnabled(State)
         startLoop()
         print("[Bots Hitbox] تم التفعيل")
     else
-        stopLoop()
+        stopLoopAndClear()
         print("[Bots Hitbox] تم الإيقاف")
     end
 end
