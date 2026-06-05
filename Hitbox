@@ -1,15 +1,9 @@
--- [[ Blox Fruits - Optimized Mega Hitbox (Anti-Lag Version - ULTRA OPTIMIZED) ]] --
--- التحديثات:
--- - استبدال RunService.Heartbeat بـ task.wait (تقليل الفحوصات من 60+ إلى 10 بالثانية)
--- - تجميع الشخصيات لتقليل الحلقات المتكررة
--- - Frame Skipping حسب الأداء
--- - استهلاك أقل للمعالج بنسبة 85-90%
+-- [[ Blox Fruits - Optimized Mega Hitbox (Anti-Lag Version) ]] --
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 
 -- إعدادات صندوق التصادم العملاق
 local Settings = {
@@ -25,18 +19,8 @@ pcall(function()
     RegisterHitRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
 end)
 
-local IsActive = false
-local TrackedCharacters = {}
-local LoopRunning = false
-local MainLoop = nil
-
--- تجميع الشخصيات لتقليل الفحص
-local CachedPlayers = {}
-local CachedBots = {}
-local LastPlayerScan = 0
-local LastBotScan = 0
-local PlayerScanInterval = 0.3
-local BotScanInterval = 0.5
+local IsActive = true
+local TrackedCharacters = {} -- تتبع الشخصيات اللي طبقنا عليها
 
 -- دالة إضافة الـ SelectionBox
 local function addSelectionBox(rootPart)
@@ -65,21 +49,26 @@ local function applyCustomHitbox(character)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     
     if rootPart and humanoid and humanoid.Health > 0 then
+        -- تطبيق الحجم دائماً (حتى لو كان معمول من قبل)
         pcall(function()
             rootPart.Size = Settings.HitboxSize
             rootPart.CanCollide = false
             rootPart.Transparency = Settings.HitboxTransparency
             rootPart.Color = Settings.FillColor
             rootPart.Material = Enum.Material.ForceField
+            
             addSelectionBox(rootPart)
         end)
         
+        -- إذا أول مرة نطبق على هالشخصية، نضيف حدث اللمس
         if not TrackedCharacters[character] then
             TrackedCharacters[character] = true
             
+            -- مراقبة تغير الحجم من اللعبة (مثل الماموث)
             local sizeConnection = nil
             sizeConnection = rootPart:GetPropertyChangedSignal("Size"):Connect(function()
                 if IsActive and rootPart and rootPart.Parent then
+                    -- إذا تغير الحجم، نعيد تطبيق حجمنا
                     pcall(function()
                         if rootPart.Size ~= Settings.HitboxSize then
                             rootPart.Size = Settings.HitboxSize
@@ -89,6 +78,7 @@ local function applyCustomHitbox(character)
                 end
             end)
             
+            -- مراقبة اختفاء الشخصية
             character.AncestryChanged:Connect(function()
                 if not character.Parent then
                     TrackedCharacters[character] = nil
@@ -107,60 +97,6 @@ local function applyCustomHitbox(character)
             end)
         end
     end
-end
-
--- تحديث قائمة اللاعبين (مخزنة)
-local function UpdateCachedPlayers()
-    local now = tick()
-    if now - LastPlayerScan >= PlayerScanInterval then
-        LastPlayerScan = now
-        CachedPlayers = {}
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character then
-                CachedPlayers[#CachedPlayers + 1] = player.Character
-            end
-        end
-    end
-    return CachedPlayers
-end
-
--- تحديث قائمة البوتات (مخزنة)
-local function UpdateCachedBots()
-    local now = tick()
-    if now - LastBotScan >= BotScanInterval then
-        LastBotScan = now
-        CachedBots = {}
-        
-        -- البحث المباشر في مجلد Enemies أولاً (أسرع)
-        local enemiesFolder = Workspace:FindFirstChild("Enemies")
-        if enemiesFolder then
-            for _, obj in pairs(enemiesFolder:GetChildren()) do
-                if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and obj:FindFirstChildOfClass("Humanoid") then
-                    CachedBots[#CachedBots + 1] = obj
-                end
-            end
-        end
-        
-        -- البحث في مجلد Characters
-        local charactersFolder = Workspace:FindFirstChild("Characters")
-        if charactersFolder then
-            for _, obj in pairs(charactersFolder:GetChildren()) do
-                if obj:IsA("Model") and obj.Name ~= LocalPlayer.Name and obj:FindFirstChild("HumanoidRootPart") and obj:FindFirstChildOfClass("Humanoid") then
-                    local isPlayer = false
-                    for _, player in pairs(Players:GetPlayers()) do
-                        if player.Character == obj then
-                            isPlayer = true
-                            break
-                        end
-                    end
-                    if not isPlayer then
-                        CachedBots[#CachedBots + 1] = obj
-                    end
-                end
-            end
-        end
-    end
-    return CachedBots
 end
 
 -- مسح التعديلات
@@ -186,52 +122,44 @@ local function clearAllModifications()
     TrackedCharacters = {}
 end
 
--- الحلقة الرئيسية (خفيفة جداً - تستخدم task.wait)
+-- الحلقة الرئيسية (أسرع عشان يلتقط التحولات بسرعة)
+local loopConnection = nil
 local function startLoop()
-    if LoopRunning then return end
-    LoopRunning = true
-    
-    MainLoop = task.spawn(function()
-        while LoopRunning do
-            if IsActive then
-                -- تطبيق على اللاعبين المخزنين
-                local players = UpdateCachedPlayers()
-                for _, character in ipairs(players) do
-                    applyCustomHitbox(character)
-                end
-                
-                -- تطبيق على البوتات المخزنين
-                local bots = UpdateCachedBots()
-                for _, character in ipairs(bots) do
-                    applyCustomHitbox(character)
+    if loopConnection then return end
+    loopConnection = RunService.Heartbeat:Connect(function()
+        if IsActive then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    applyCustomHitbox(player.Character)
                 end
             end
-            task.wait(0.1) -- 10 مرات بالثانية فقط
+            for _, object in pairs(workspace:GetChildren()) do
+                if object:IsA("Model") and object:FindFirstChild("HumanoidRootPart") and object:FindFirstChildOfClass("Humanoid") then
+                    local isPlayer = false
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player.Character == object then
+                            isPlayer = true
+                            break
+                        end
+                    end
+                    if not isPlayer then
+                        applyCustomHitbox(object)
+                    end
+                end
+            end
         end
     end)
 end
 
-local function stopLoop()
-    LoopRunning = false
-    if MainLoop then
-        task.cancel(MainLoop)
-        MainLoop = nil
-    end
-end
+startLoop()
 
 -- API للتحكم
 local HitboxAPI = {}
 
 function HitboxAPI:SetEnabled(State)
     IsActive = State
-    if State then
-        startLoop()
-    else
+    if not State then
         clearAllModifications()
-        -- إذا ما في لاعبين ولا بوتات، نوقف اللوب
-        if #CachedPlayers == 0 and #CachedBots == 0 then
-            stopLoop()
-        end
     end
     print("[Hitbox] SetEnabled:", State)
 end
@@ -239,6 +167,7 @@ end
 function HitboxAPI:SetSize(SizeValue)
     Settings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
     if IsActive then
+        -- نمسح التتبع ونعيد التطبيق على الكل
         for char, _ in pairs(TrackedCharacters) do
             TrackedCharacters[char] = nil
         end
@@ -253,8 +182,5 @@ end
 function HitboxAPI:GetSize()
     return Settings.HitboxSize.X
 end
-
--- بدء اللوب بشكل افتراضي (حالة inactive)
-startLoop()
 
 return HitboxAPI
