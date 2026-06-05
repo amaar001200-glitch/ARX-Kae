@@ -1,26 +1,19 @@
--- █ ARAKS HUB | ESP RENDERER MODULE (OPTIMIZED - NO FRAME DROPS)
--- █ التحديثات:
--- █ - Frame Skipping (يتخطى فريمات لتقليل الضغط)
--- █ - Batch Rendering (تجميع الرسم)
--- █ - تقليل تحديث المسافات والفواكه
--- █ - استهلاك أقل للمعالج بنسبة 70-80%
+-- █ ARAKS HUB | ESP RENDERER MODULE (محسن - استهلاك أقل للمعالج)
+-- الإصدار 2.0 - تحسين الأداء وتقليل استهلاك المعالج
 
 local ESPRenderer = {}
 
 do
+    -- استلام المتغيرات من السكريبت الرئيسي
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
     local RunService = game:GetService("RunService")
     local Workspace = game:GetService("Workspace")
     
-    -- متغيرات سيتم تمريرها
+    -- هذه المتغيرات سيتم تمريرها عند التحميل
     local Config = nil
     local AdaptivePerformance = nil
-    
-    -- Frame Skipping (يتخطى فريمات عشان يقلل الضغط)
-    local frameCounter = 0
-    local skipFrames = 2 -- عدد الفريمات اللي يتخطاها (كل 3 فريمات يرسم)
     
     -- متغيرات الرسم
     local Boxes = {}
@@ -29,24 +22,34 @@ do
     local LevelTags = {}
     local DistTags = {}
     
-    -- تحديث المسافات (مؤقت)
-    local lastDistanceUpdate = 0
-    local distanceCache = {}
-    local distanceUpdateInterval = 0.2 -- كل 0.2 ثانية
-    
-    -- تحديث الفواكه
-    local lastFruitUpdate = 0
-    local cachedFruits = {}
-    local fruitUpdateInterval = 1 -- كل 1 ثانية
-    
-    -- قائمة أسماء الفواكه (مجمعة)
+    -- قائمة أسماء الفواكه (مضغوطة للبحث السريع)
     local FruitNames = {"Rocket", "Spin", "Blade", "Spring", "Bomb", "Smoke", "Spike", "Flame", "Ice", "Sand", "Dark", "Eagle", "Diamond", "Light", "Rubber", "Ghost", "Magma", "Quake", "Buddha", "Love", "Creation", "Spider", "Sound", "Phoenix", "Portal", "Rumble", "Pain", "Blizzard", "Gravity", "Mammoth", "T-Rex", "Dough", "Shadow", "Venom", "Gas", "Spirit", "Leopard", "Yeti", "Kitsune", "Control", "Dragon"}
+    
+    -- تحسين: تخزين المراجع للدوال
+    local table_insert = table.insert
+    local table_ipairs = ipairs
+    local string_lower = string.lower
+    local string_find = string.find
+    local math_floor = math.floor
+    local tick = tick
+    local pairs = pairs
     
     local FruitText = nil
     local ESPConnection = nil
     local lastESPUpdate = 0
+    local lastFruitUpdate = 0
+    local cachedFruits = {}
     
-    -- دالة إنشاء عناصر ESP للاعب (مرة واحدة فقط عند دخول اللاعب)
+    -- Frame Skipping - تقليل عدد الفريمات المرسومة
+    local frameCounter = 0
+    local framesToSkip = 1
+    
+    -- Cache للمسافات لتجنب الحساب المتكرر
+    local distanceCache = {}
+    local lastDistanceUpdate = 0
+    local DISTANCE_CACHE_TIME = 0.15
+    
+    -- دالة إنشاء عناصر ESP للاعب
     local function CreateESP(plr)
         if plr == LocalPlayer then return end
         
@@ -92,22 +95,33 @@ do
     
     -- دالة حذف عناصر ESP للاعب
     local function RemoveESP(plr)
-        local elements = {Boxes[plr], NameTags[plr], HealthBars[plr], LevelTags[plr], DistTags[plr]}
-        for _, elem in ipairs(elements) do
-            if elem then pcall(function() elem:Remove() end) end
+        if Boxes[plr] then
+            pcall(function() Boxes[plr]:Remove() end)
+            Boxes[plr] = nil
         end
-        Boxes[plr] = nil
-        NameTags[plr] = nil
-        HealthBars[plr] = nil
-        LevelTags[plr] = nil
-        DistTags[plr] = nil
+        if NameTags[plr] then
+            pcall(function() NameTags[plr]:Remove() end)
+            NameTags[plr] = nil
+        end
+        if HealthBars[plr] then
+            pcall(function() HealthBars[plr]:Remove() end)
+            HealthBars[plr] = nil
+        end
+        if LevelTags[plr] then
+            pcall(function() LevelTags[plr]:Remove() end)
+            LevelTags[plr] = nil
+        end
+        if DistTags[plr] then
+            pcall(function() DistTags[plr]:Remove() end)
+            DistTags[plr] = nil
+        end
         distanceCache[plr] = nil
     end
     
-    -- تحديث المسافات (مرة كل 0.2 ثانية بدل كل فريم)
-    local function UpdateDistances()
+    -- تحديث المسافات المخزنة (مرة كل 0.15 ثانية)
+    local function UpdateDistanceCache()
         local now = tick()
-        if now - lastDistanceUpdate < distanceUpdateInterval then return end
+        if now - lastDistanceUpdate < DISTANCE_CACHE_TIME then return end
         lastDistanceUpdate = now
         
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -116,164 +130,14 @@ do
         for plr, _ in pairs(Boxes) do
             if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
                 local targetRoot = plr.Character.HumanoidRootPart
-                distanceCache[plr] = math.floor((hrp.Position - targetRoot.Position).Magnitude)
+                distanceCache[plr] = math_floor((hrp.Position - targetRoot.Position).Magnitude)
             else
                 distanceCache[plr] = nil
             end
         end
     end
     
-    -- تحديث قائمة الفواكه (مرة كل 1 ثانية)
-    local function UpdateFruits()
-        local now = tick()
-        if now - lastFruitUpdate < fruitUpdateInterval then return end
-        lastFruitUpdate = now
-        
-        cachedFruits = {}
-        for _, v in pairs(Workspace:GetChildren()) do
-            if v:IsA("Tool") then
-                for _, fruitName in ipairs(FruitNames) do
-                    if string.find(string.lower(v.Name), string.lower(fruitName)) then
-                        cachedFruits[#cachedFruits + 1] = v
-                        break
-                    end
-                end
-            end
-        end
-    end
-    
-    -- رسم اللاعبين (مع Frame Skipping)
-    local function DrawPlayers()
-        local frameSkip = skipFrames
-        if AdaptivePerformance and AdaptivePerformance.TargetQuality then
-            -- جودة أقل = رسم أقل
-            if AdaptivePerformance.TargetQuality < 0.5 then
-                frameSkip = 4
-            elseif AdaptivePerformance.TargetQuality < 0.8 then
-                frameSkip = 2
-            else
-                frameSkip = 1
-            end
-        end
-        
-        frameCounter = frameCounter + 1
-        if frameCounter < frameSkip then return end
-        frameCounter = 0
-        
-        for plr, box in pairs(Boxes) do
-            -- تحديث الرؤية حسب الإعدادات
-            local anyVisible = false
-            
-            if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
-                local root = plr.Character.HumanoidRootPart
-                local hum = plr.Character.Humanoid
-                local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
-                
-                if onScreen then
-                    local sizeX = 2300 / pos.Z
-                    local sizeY = sizeX * 1.5
-                    local boxPos = Vector2.new(pos.X - sizeX/2, pos.Y - sizeY/2)
-                    
-                    -- رسم الإطار
-                    if Config.ESP_Box then
-                        box.Visible = true
-                        box.Size = Vector2.new(sizeX, sizeY)
-                        box.Position = boxPos
-                        anyVisible = true
-                    end
-                    
-                    -- رسم شريط الصحة
-                    if Config.ESP_HealthBar and HealthBars[plr] then
-                        local hpPercent = hum.Health / hum.MaxHealth
-                        HealthBars[plr].Visible = true
-                        HealthBars[plr].Size = Vector2.new(3, sizeY)
-                        HealthBars[plr].Position = Vector2.new(boxPos.X - 6, boxPos.Y)
-                        HealthBars[plr].Color = Color3.fromHSV(hpPercent * 0.3, 1, 1)
-                        anyVisible = true
-                    elseif HealthBars[plr] then
-                        HealthBars[plr].Visible = false
-                    end
-                    
-                    -- رسم الاسم
-                    if Config.ESP_Name and NameTags[plr] then
-                        NameTags[plr].Visible = true
-                        NameTags[plr].Text = plr.Name
-                        NameTags[plr].Position = Vector2.new(pos.X, boxPos.Y - 20)
-                        anyVisible = true
-                    elseif NameTags[plr] then
-                        NameTags[plr].Visible = false
-                    end
-                    
-                    -- رسم المستوى
-                    if Config.ESP_Level and LevelTags[plr] then
-                        local data = plr:FindFirstChild("Data") or plr:FindFirstChild("leaderstats")
-                        local lvl = data and (data:FindFirstChild("Level") or data:FindFirstChild("Mivai"))
-                        LevelTags[plr].Visible = true
-                        LevelTags[plr].Text = "Lv. " .. (lvl and lvl.Value or "???")
-                        LevelTags[plr].Position = Vector2.new(pos.X, boxPos.Y - 35)
-                        anyVisible = true
-                    elseif LevelTags[plr] then
-                        LevelTags[plr].Visible = false
-                    end
-                    
-                    -- رسم المسافة (من الكاش)
-                    if Config.ESP_Distance and DistTags[plr] and distanceCache[plr] then
-                        DistTags[plr].Visible = true
-                        DistTags[plr].Text = "[" .. distanceCache[plr] .. "m]"
-                        DistTags[plr].Position = Vector2.new(pos.X, boxPos.Y + sizeY + 5)
-                        anyVisible = true
-                    elseif DistTags[plr] then
-                        DistTags[plr].Visible = false
-                    end
-                end
-            end
-            
-            -- إخفاء كل العناصر إذا كان اللاعب خارج الشاشة أو ليس له شخصية
-            if not anyVisible then
-                if box then box.Visible = false end
-                if NameTags[plr] then NameTags[plr].Visible = false end
-                if HealthBars[plr] then HealthBars[plr].Visible = false end
-                if LevelTags[plr] then LevelTags[plr].Visible = false end
-                if DistTags[plr] then DistTags[plr].Visible = false end
-            end
-        end
-    end
-    
-    -- رسم الفواكه
-    local function DrawFruits()
-        if not Config.FruitESP then
-            if FruitText then FruitText.Visible = false end
-            return
-        end
-        
-        UpdateFruits()
-        
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local found = false
-        
-        for _, v in ipairs(cachedFruits) do
-            if v and v.Parent then
-                local handle = v:FindFirstChild("Handle") or v
-                local pos, onScreen = Camera:WorldToViewportPoint(handle.Position)
-                if onScreen then
-                    local dist = hrp and math.floor((hrp.Position - handle.Position).Magnitude) or 0
-                    if FruitText then
-                        FruitText.Text = " " .. v.Name .. " [" .. dist .. "m]"
-                        FruitText.Position = Vector2.new(pos.X, pos.Y)
-                        FruitText.Visible = true
-                    end
-                    found = true
-                    break
-                end
-            end
-        end
-        
-        if not found and FruitText then
-            FruitText.Visible = false
-        end
-    end
-    
-    -- دالة تشغيل ESP
+    -- دالة تشغيل ESP (محسنة)
     local function StartESP()
         if ESPConnection then
             ESPConnection:Disconnect()
@@ -301,20 +165,114 @@ do
         ESPConnection = RunService.RenderStepped:Connect(function()
             if not Config then return end
             
-            -- التحقق من وجود أي إعدادات مفعلة
-            local hasESP = Config.ESP_Box or Config.ESP_Name or Config.ESP_HealthBar or Config.ESP_Level or Config.ESP_Distance or Config.FruitESP
-            if not hasESP then return end
+            -- تحديث المسافات المخزنة
+            UpdateDistanceCache()
             
-            -- تحديث المسافات (مرة كل 0.2 ثانية)
-            UpdateDistances()
+            local now = tick()
             
-            -- رسم اللاعبين
-            if Config.ESP_Box or Config.ESP_Name or Config.ESP_HealthBar or Config.ESP_Level or Config.ESP_Distance then
-                DrawPlayers()
-            else
-                -- إخفاء كل العناصر
+            -- Frame Skipping - نخفف الرسم حسب الجودة
+            frameCounter = frameCounter + 1
+            if AdaptivePerformance and AdaptivePerformance.TargetQuality then
+                if AdaptivePerformance.TargetQuality < 0.5 then
+                    framesToSkip = 3
+                elseif AdaptivePerformance.TargetQuality < 0.8 then
+                    framesToSkip = 2
+                else
+                    framesToSkip = 1
+                end
+            end
+            
+            if frameCounter < framesToSkip then return end
+            frameCounter = 0
+            
+            -- التحقق من وجود إعدادات مفعلة
+            local hasESP = Config.ESP_Box or Config.ESP_Name or Config.ESP_HealthBar or Config.ESP_Level or Config.ESP_Distance
+            local hasFruitESP = Config.FruitESP
+            
+            if not hasESP and not hasFruitESP then return end
+            
+            -- رسم اللاعبين (مع التحقق من الحاجة للرسم)
+            if hasESP then
                 for plr, box in pairs(Boxes) do
-                    if box then box.Visible = false end
+                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
+                        local root = plr.Character.HumanoidRootPart
+                        local hum = plr.Character.Humanoid
+                        local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                        
+                        if onScreen then
+                            local sizeX = 2300 / pos.Z
+                            local sizeY = sizeX * 1.5
+                            local boxPos = Vector2.new(pos.X - sizeX/2, pos.Y - sizeY/2)
+                            
+                            -- رسم الإطار
+                            if Config.ESP_Box then
+                                box.Visible = true
+                                box.Size = Vector2.new(sizeX, sizeY)
+                                box.Position = boxPos
+                            else
+                                box.Visible = false
+                            end
+                            
+                            -- رسم شريط الصحة
+                            if Config.ESP_HealthBar and HealthBars[plr] then
+                                local hpPercent = hum.Health / hum.MaxHealth
+                                HealthBars[plr].Visible = true
+                                HealthBars[plr].Size = Vector2.new(3, sizeY)
+                                HealthBars[plr].Position = Vector2.new(boxPos.X - 6, boxPos.Y)
+                                HealthBars[plr].Color = Color3.fromHSV(hpPercent * 0.3, 1, 1)
+                            elseif HealthBars[plr] then
+                                HealthBars[plr].Visible = false
+                            end
+                            
+                            -- رسم الاسم
+                            if Config.ESP_Name and NameTags[plr] then
+                                NameTags[plr].Visible = true
+                                NameTags[plr].Text = plr.Name
+                                NameTags[plr].Position = Vector2.new(pos.X, boxPos.Y - 20)
+                            elseif NameTags[plr] then
+                                NameTags[plr].Visible = false
+                            end
+                            
+                            -- رسم المستوى
+                            if Config.ESP_Level and LevelTags[plr] then
+                                local data = plr:FindFirstChild("Data") or plr:FindFirstChild("leaderstats")
+                                local lvl = data and (data:FindFirstChild("Level") or data:FindFirstChild("Mivai"))
+                                LevelTags[plr].Visible = true
+                                LevelTags[plr].Text = "Lv. " .. (lvl and lvl.Value or "???")
+                                LevelTags[plr].Position = Vector2.new(pos.X, boxPos.Y - 35)
+                            elseif LevelTags[plr] then
+                                LevelTags[plr].Visible = false
+                            end
+                            
+                            -- رسم المسافة (من الكاش المخزن)
+                            if Config.ESP_Distance and DistTags[plr] and distanceCache[plr] then
+                                DistTags[plr].Visible = true
+                                DistTags[plr].Text = "[" .. distanceCache[plr] .. "m]"
+                                DistTags[plr].Position = Vector2.new(pos.X, boxPos.Y + sizeY + 5)
+                            elseif DistTags[plr] then
+                                DistTags[plr].Visible = false
+                            end
+                        else
+                            -- إخفاء كل العناصر إذا كان خارج الشاشة
+                            box.Visible = false
+                            if NameTags[plr] then NameTags[plr].Visible = false end
+                            if HealthBars[plr] then HealthBars[plr].Visible = false end
+                            if LevelTags[plr] then LevelTags[plr].Visible = false end
+                            if DistTags[plr] then DistTags[plr].Visible = false end
+                        end
+                    else
+                        -- إخفاء كل العناصر إذا كانت الشخصية غير موجودة
+                        if Boxes[plr] then Boxes[plr].Visible = false end
+                        if NameTags[plr] then NameTags[plr].Visible = false end
+                        if HealthBars[plr] then HealthBars[plr].Visible = false end
+                        if LevelTags[plr] then LevelTags[plr].Visible = false end
+                        if DistTags[plr] then DistTags[plr].Visible = false end
+                    end
+                end
+            else
+                -- إخفاء كل عناصر ESP إذا كانت كل الإعدادات معطلة
+                for plr, box in pairs(Boxes) do
+                    box.Visible = false
                     if NameTags[plr] then NameTags[plr].Visible = false end
                     if HealthBars[plr] then HealthBars[plr].Visible = false end
                     if LevelTags[plr] then LevelTags[plr].Visible = false end
@@ -322,8 +280,50 @@ do
                 end
             end
             
-            -- رسم الفواكه
-            DrawFruits()
+            -- رسم الفواكه (مع Cache)
+            if hasFruitESP then
+                if now - lastFruitUpdate > 0.8 then
+                    cachedFruits = {}
+                    for _, v in pairs(Workspace:GetChildren()) do
+                        if v:IsA("Tool") then
+                            local vNameLower = string_lower(v.Name)
+                            for _, fruitName in table_ipairs(FruitNames) do
+                                if string_find(vNameLower, string_lower(fruitName)) then
+                                    table_insert(cachedFruits, v)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    lastFruitUpdate = now
+                end
+                
+                local found = false
+                for _, v in table_ipairs(cachedFruits) do
+                    if v and v.Parent then
+                        local handle = v:FindFirstChild("Handle") or v
+                        local pos, onScreen = Camera:WorldToViewportPoint(handle.Position)
+                        if onScreen then
+                            local dist = distanceCache.fruit or 0
+                            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                                dist = math_floor((LocalPlayer.Character.HumanoidRootPart.Position - handle.Position).Magnitude)
+                            end
+                            if FruitText then
+                                FruitText.Text = " " .. v.Name .. " [" .. dist .. "m]"
+                                FruitText.Position = Vector2.new(pos.X, pos.Y)
+                                FruitText.Visible = true
+                            end
+                            found = true
+                            break
+                        end
+                    end
+                end
+                if not found and FruitText then
+                    FruitText.Visible = false
+                end
+            elseif FruitText then
+                FruitText.Visible = false
+            end
         end)
     end
     
@@ -334,8 +334,8 @@ do
             ESPConnection = nil
         end
         
-        -- حذف جميع عناصر الرسم
-        for plr, _ in pairs(Boxes) do
+        -- إخفاء وحذف جميع عناصر الرسم
+        for _, plr in pairs(Players:GetPlayers()) do
             RemoveESP(plr)
         end
         
@@ -353,7 +353,7 @@ do
         cachedFruits = {}
     end
     
-    -- الدوال العامة
+    -- الدوال العامة للتحكم
     function ESPRenderer:Init(config, adaptivePerf)
         Config = config
         AdaptivePerformance = adaptivePerf
