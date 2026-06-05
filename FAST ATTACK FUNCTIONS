@@ -1,4 +1,4 @@
--- █ FAST ATTACK FUNCTIONS (OPTIMIZED - Performance Improved)
+-- █ FAST ATTACK FUNCTIONS (with pre-cached remotes optimization)
 
 return function(env)
     local Config = env.Config
@@ -16,168 +16,86 @@ return function(env)
     local fastCombo = 0
     local lastFastCombo = 0
     local FastAttackConnection = nil
-    
-    -- تحسين: تخزين القيم المستخدمة بكثرة
-    local tick = tick
-    local pairs = pairs
-    local ipairs = ipairs
-    local table_insert = table.insert
-    local math_huge = math.huge
-    local math_floor = math.floor
-    
-    -- تحسين: تخزين الـ Cache للمسافة القصوى
-    local MAX_ATTACK_RANGE = 120
-    
-    -- تحسين: تخزين Cache للأعداء (يتم تحديثه كل 0.2 ثانية بدل كل فريم)
-    local CachedEnemies = {}
-    local LastEnemyScan = 0
-    local ENEMY_SCAN_INTERVAL = 0.2
-    
-    local function UpdateEnemyCache()
-        local now = tick()
-        if now - LastEnemyScan < ENEMY_SCAN_INTERVAL then
-            return
-        end
-        LastEnemyScan = now
-        
+    local lastFastAttackCheck = 0
+
+    local function GetClosestEnemyFast()
         local character = LocalPlayer.Character
-        if not character then 
-            CachedEnemies = {}
-            return 
-        end
-        
-        local myPos = character:FindFirstChild("HumanoidRootPart")
-        if not myPos then 
-            CachedEnemies = {}
-            return 
-        end
-        
-        myPos = myPos.Position
-        local newCache = {}
-        
-        -- فحص مجلد Enemies
+        if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+        local myPos = character.HumanoidRootPart.Position
+        local closest = nil
+        local closestDist = 120
         local enemies = Workspace:FindFirstChild("Enemies")
         if enemies then
             for _, v in pairs(enemies:GetChildren()) do
-                local humanoid = v:FindFirstChild("Humanoid")
-                local rootPart = v:FindFirstChild("HumanoidRootPart")
-                if humanoid and rootPart and humanoid.Health > 0 then
-                    local dist = (rootPart.Position - myPos).Magnitude
-                    if dist <= MAX_ATTACK_RANGE then
-                        table_insert(newCache, {v, dist})
+                if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                    local dist = (v.HumanoidRootPart.Position - myPos).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closest = v
                     end
                 end
             end
         end
-        
-        -- فحص مجلد Characters
         local characters = Workspace:FindFirstChild("Characters")
         if characters then
             for _, v in pairs(characters:GetChildren()) do
-                if v.Name ~= LocalPlayer.Name then
-                    local humanoid = v:FindFirstChild("Humanoid")
-                    local rootPart = v:FindFirstChild("HumanoidRootPart")
-                    if humanoid and rootPart and humanoid.Health > 0 then
-                        local dist = (rootPart.Position - myPos).Magnitude
-                        if dist <= MAX_ATTACK_RANGE then
-                            table_insert(newCache, {v, dist})
-                        end
+                if v.Name ~= LocalPlayer.Name and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                    local dist = (v.HumanoidRootPart.Position - myPos).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closest = v
                     end
                 end
             end
         end
-        
-        -- ترتيب الكاش حسب المسافة (الأقرب أولاً)
-        table.sort(newCache, function(a, b) return a[2] < b[2] end)
-        CachedEnemies = newCache
-    end
-
-    local function GetClosestEnemyFast()
-        UpdateEnemyCache()
-        if #CachedEnemies > 0 then
-            return CachedEnemies[1][1]
-        end
-        return nil
+        return closest
     end
 
     local function DoFastAttack()
         if not Config.FastAttack then return end
-        
-        local attackSpeed = Config.FastAttackSpeed
-        local now = tick()
-        
-        if now - lastFastAttack < attackSpeed then return end
-        
+        if tick() - lastFastAttack < Config.FastAttackSpeed then return end
         local character = LocalPlayer.Character
-        if not character then return end
-        
-        local hum = character:FindFirstChild("Humanoid")
-        if not hum or hum.Health <= 0 then return end
-        
+        if not character or not character:FindFirstChild("Humanoid") then return end
+        local hum = character.Humanoid
+        if hum.Health <= 0 then return end
         local tool = character:FindFirstChildOfClass("Tool")
         if not tool then return end
-        
         local target = GetClosestEnemyFast()
         if not target then return end
-        
-        local targetRoot = target:FindFirstChild("HumanoidRootPart")
-        if not targetRoot then return end
-        
-        lastFastAttack = now
-        
-        -- تحديث الكومبو
-        if now - lastFastCombo > 0.4 then fastCombo = 0 end
+        lastFastAttack = tick()
+        if tick() - lastFastCombo > 0.4 then fastCombo = 0 end
         fastCombo = fastCombo + 1
         if fastCombo > 4 then fastCombo = 1 end
-        lastFastCombo = now
-        
+        lastFastCombo = tick()
         local toolTip = tool.ToolTip
-        local characterRoot = character:FindFirstChild("HumanoidRootPart")
-        
         if toolTip == "Sword" or toolTip == "Melee" then
             if RegisterAttack and RegisterHit then
-                pcall(function()
-                    RegisterAttack:FireServer(0)
-                    RegisterHit:FireServer(targetRoot, {{target, targetRoot}})
-                end)
+                RegisterAttack:FireServer(0)
+                RegisterHit:FireServer(target.HumanoidRootPart, {{target, target.HumanoidRootPart}})
             end
         elseif toolTip == "Blox Fruit" and tool:FindFirstChild("LeftClickRemote") then
-            if characterRoot then
-                local dir = (targetRoot.Position - characterRoot.Position).Unit
-                pcall(function()
-                    tool.LeftClickRemote:FireServer(dir, fastCombo)
-                end)
-            end
+            local dir = (target.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Unit
+            tool.LeftClickRemote:FireServer(dir, fastCombo)
         elseif toolTip == "Gun" then
-            if ShootGunEvent then
-                pcall(function()
-                    ShootGunEvent:FireServer(targetRoot.Position)
-                end)
-            end
+            if ShootGunEvent then ShootGunEvent:FireServer(target.HumanoidRootPart.Position) end
         end
     end
 
     local function StartFastAttack()
-        if FastAttackConnection then 
-            FastAttackConnection:Disconnect() 
-            FastAttackConnection = nil 
-        end
+        if FastAttackConnection then FastAttackConnection:Disconnect(); FastAttackConnection = nil end
         FastAttackConnection = RunService.Stepped:Connect(DoFastAttack)
     end
 
     local function StopFastAttack()
-        if FastAttackConnection then 
-            FastAttackConnection:Disconnect() 
-            FastAttackConnection = nil 
-        end
-        CachedEnemies = {}
-        LastEnemyScan = 0
+        if FastAttackConnection then FastAttackConnection:Disconnect(); FastAttackConnection = nil end
     end
 
+    -- بدء التشغيل إذا كان مفعلاً في الإعدادات
     if Config.FastAttack then
         StartFastAttack()
     end
 
+    -- إرجاع الدوال للاستخدام الخارجي
     return {
         Start = StartFastAttack,
         Stop = StopFastAttack,
