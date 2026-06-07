@@ -1,0 +1,465 @@
+-- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM + SKILLS)
+-- version 1.4 (Fixed: Fly system only works when module is enabled)
+-- Modified: Server Wipe for KillNearest + Anti-Kick Teleport Logic
+
+local AutoHuntModule = {}
+
+do
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local TweenService = game:GetService("TweenService")
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    
+    -- Remotes
+    local Net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules.Net
+    local RegisterAttack = Net and Net["RE/RegisterAttack"]
+    local RegisterHit = Net and Net["RE/RegisterHit"]
+    
+    -- بيانات AutoHunt
+    local Enabled = false
+    local KillNearest = false
+    local SelectedPlayer = nil
+    local SkillBusy = false
+    
+    -- ==================================================
+    -- نظام تجنب الأصدقاء والتحالفات
+    -- ==================================================
+    
+    local function IsValidEnemy(plr)
+        if not plr then
+            return false
+        end
+        
+        -- لا تستهدف نفسك
+        if plr == LocalPlayer then
+            return false
+        end
+        
+        -- نفس الفريق = صديق -> يتجنبه
+        if plr.Team == LocalPlayer.Team then
+            return false
+        end
+        
+        -- التحقق إذا كان الهدف على قيد الحياة
+        local char = plr.Character
+        if not char then
+            return false
+        end
+        
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then
+            return false
+        end
+        
+        return true
+    end
+    
+    -- ==================================================
+    -- نظام الطيران عند انخفاض الدم (يشتغل فقط لما الموديل شغال)
+    -- ==================================================
+    
+    local LOW_HEALTH_FLY = 5000
+    local SAFE_HEALTH_RETURN = 8000
+    local FlyMode = false
+    local SavedTarget = nil
+    local FlyPosition = nil
+    
+    -- منصة السماء
+    local SkyPlatform = Instance.new("Part")
+    SkyPlatform.Name = "ARAKS_SkyPlatform"
+    SkyPlatform.Size = Vector3.new(5, 0.5, 5)
+    SkyPlatform.Transparency = 0.5
+    SkyPlatform.Material = Enum.Material.Neon
+    SkyPlatform.Color = Color3.fromRGB(255, 85, 85)
+    SkyPlatform.Anchored = true
+    SkyPlatform.CanCollide = true
+    SkyPlatform.Parent = workspace
+    SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+    
+    -- مفاتيح المهارات
+    local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+    local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
+    
+    -- متغيرات التشغيل
+    local currentTween = nil
+    
+    -- المنصة
+    local platform = Instance.new("Part")
+    platform.Name = "ARAKS_Platform"
+    platform.Size = Vector3.new(10, 0.5, 10)
+    platform.Transparency = 0.4
+    platform.Material = Enum.Material.Neon
+    platform.Color = Color3.fromRGB(88, 55, 175)
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Parent = workspace
+    platform.CFrame = CFrame.new(0, -1000, 0)
+    
+    -- دوال داخلية
+    local function IsAlive()
+        local char = LocalPlayer.Character
+        if not char then return false end
+        local hum = char:FindFirstChild("Humanoid")
+        return hum and hum.Health > 0
+    end
+    
+    local function GetMyHealth()
+        local char = LocalPlayer.Character
+        if not char then return 0 end
+        local hum = char:FindFirstChild("Humanoid")
+        return hum and hum.Health or 0
+    end
+    
+    local function IsModuleActive()
+        return Enabled or KillNearest or (SelectedPlayer ~= nil)
+    end
+    
+    local function TapKey(key)
+        if not IsAlive() then return end
+        VirtualInputManager:SendKeyEvent(true, key, false, game)
+        task.wait(0.018)
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    end
+    
+    local function UseSkill(skill)
+        if not IsAlive() then return end
+        TapKey(skill)
+        task.wait(0.04)
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then pcall(function() tool:Activate() end) end
+        task.wait(0.14)
+    end
+    
+    -- تفعيل الـ NoClip التلقائي أثناء حركة الموديل لمنع الصدمات والطرد
+    RunService.Stepped:Connect(function()
+        if IsModuleActive() and IsAlive() and not FlyMode then
+            local char = LocalPlayer.Character
+            if char then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- [تم التعديل]: ميزة قتل القريب أصبحت الآن تلاحق جميع لاعبي السيرفر بالترتيب وتقتلهم واحد تلو الآخر
+    local function GetNearestEnemy()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        
+        -- البحث عن أول لاعب متاح وصالح للقتال في السيرفر وتصفيته
+        for _, p in pairs(Players:GetPlayers()) do
+            if IsValidEnemy(p) then
+                local c = p.Character
+                local root = c and c:FindFirstChild("HumanoidRootPart")
+                local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if root and hum and hum.Health > 0 then
+                    return p -- يعود باللاعب الحالي لقتله قبل الانتقال للتالي
+                end
+            end
+        end
+        return nil
+    end
+    
+    local function GetCurrentTarget()
+        if not IsModuleActive() then
+            return nil
+        end
+        
+        if FlyMode then
+            return SavedTarget
+        end
+        
+        local target = nil
+        if KillNearest then
+            target = GetNearestEnemy()
+        elseif Enabled and SelectedPlayer then
+            if IsValidEnemy(SelectedPlayer) then
+                target = SelectedPlayer
+            else
+                target = nil
+            end
+        end
+        return target
+    end
+    
+    local function FlyToSky()
+        local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+        
+        FlyPosition = myHrp.Position + Vector3.new(0, 7000, 0)
+        
+        SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
+        SkyPlatform.CanCollide = true
+        
+        myHrp.CFrame = CFrame.new(FlyPosition)
+        myHrp.Velocity = Vector3.zero
+        myHrp.RotVelocity = Vector3.zero
+        
+        platform.CFrame = CFrame.new(0, -1000, 0)
+    end
+    
+    local function ReturnToGround(target)
+        local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+        
+        local targetChar = target and target.Character
+        local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+        
+        if targetHrp then
+            myHrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 4)
+        end
+        
+        myHrp.Velocity = Vector3.zero
+        myHrp.RotVelocity = Vector3.zero
+        
+        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+    end
+    
+    local function GetSessionID()
+        local ok, result = pcall(function()
+            local SendHitsToServer = getrenv()._G.SendHitsToServer
+            local CombatThread = getupvalues(SendHitsToServer)[1]
+            return tostring(LocalPlayer.UserId):sub(2,4)..tostring(CombatThread):sub(11,15)
+        end)
+        return ok and result or ""
+    end
+    
+    local function Attack(target)
+        if not target or not target:FindFirstChild("HumanoidRootPart") then return end
+        if RegisterAttack and RegisterHit then
+            pcall(function()
+                RegisterAttack:FireServer(0.5)
+                RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, GetSessionID())
+            end)
+        end
+    end
+    
+    -- [تم التعديل]: آلية التنقل السريع الآمنة لتجنب الحظر والإرجاع للخلف (Anti-Kick Teleport)
+    local function MoveToEnemy(targetChar, hrp)
+        if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then
+            platform.CFrame = CFrame.new(0, -1000, 0)
+            return false
+        end
+        local enemyRoot = targetChar.HumanoidRootPart
+        local distance = (enemyRoot.Position - hrp.Position).Magnitude
+        
+        -- الحفاظ على المنصة أسفل اللاعب مباشرة لمنع السقوط المشبوه
+        platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3, hrp.Position.Z)
+        platform.CanCollide = true
+        
+        if distance > 10 then
+            if currentTween then pcall(function() currentTween:Cancel() end) end
+            
+            -- سرعة متوازنة (350) خطية بالكامل لتفادي رادارات الحماية ونظام الإرجاع
+            local travelTime = distance / 350
+            currentTween = TweenService:Create(hrp, TweenInfo.new(travelTime, Enum.EasingStyle.Linear), {CFrame = enemyRoot.CFrame * CFrame.new(0, 0, 3)})
+            currentTween:Play()
+            currentTween.Completed:Wait()
+            currentTween = nil
+        end
+        
+        -- التثبيت الصارم خلف اللاعب مباشرة وتصفير الفيزياء
+        hrp.CFrame = enemyRoot.CFrame * CFrame.new(0, 0, 3)
+        hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
+        platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3, hrp.Position.Z)
+        return true
+    end
+    
+    -- ==================================================
+    -- نظام مراقبة الدم والطيران (يشتغل فقط لما الموديل شغال)
+    -- ==================================================
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            
+            -- اهم شرط: ما يشتغلش غير لما الموديل شغال
+            if not IsModuleActive() or not IsAlive() then
+                -- لو كان في وضع الطيران والموديل انطفي، ننزله
+                if FlyMode then
+                    FlyMode = false
+                    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if myHrp then
+                        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+                    end
+                end
+                continue
+            end
+            
+            local myHealth = GetMyHealth()
+            local currentTarget = GetCurrentTarget()
+            
+            -- حالة انخفاض الدم
+            if myHealth <= LOW_HEALTH_FLY and not FlyMode and IsModuleActive() then
+                FlyMode = true
+                SavedTarget = currentTarget
+                FlyToSky()
+            end
+            
+            -- حالة العودة بعد تعبئة الدم
+            if FlyMode and myHealth >= SAFE_HEALTH_RETURN then
+                FlyMode = false
+                ReturnToGround(SavedTarget)
+            end
+            
+            -- تثبيت في السماء
+            if FlyMode then
+                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if myHrp and FlyPosition then
+                    myHrp.CFrame = CFrame.new(FlyPosition)
+                    myHrp.Velocity = Vector3.zero
+                    myHrp.RotVelocity = Vector3.zero
+                    SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
+                end
+            end
+        end
+    end)
+    
+    -- لوب المهارات
+    task.spawn(function()
+        while true do
+            task.wait(0.35)
+            if not IsAlive() then continue end
+            if not IsModuleActive() then continue end
+            if FlyMode then continue end
+            
+            local target = GetCurrentTarget()
+            
+            if target and target.Character then
+                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
+                if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 20 then
+                    if not SkillBusy then
+                        SkillBusy = true
+                        pcall(function()
+                            for _, slot in ipairs(HotbarKeys) do
+                                if not IsAlive() then break end
+                                if FlyMode then break end
+                                if not IsModuleActive() then break end
+                                TapKey(slot)
+                                task.wait(0.12)
+                                for _, skill in ipairs(SkillKeys) do
+                                    if not IsAlive() then break end
+                                    if FlyMode then break end
+                                    if not IsModuleActive() then break end
+                                    UseSkill(skill)
+                                end
+                                task.wait(0.06)
+                            end
+                        end)
+                        SkillBusy = false
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- لوب القتال الرئيسي
+    task.spawn(function()
+        while true do
+            task.wait()
+            if not IsAlive() then 
+                platform.CFrame = CFrame.new(0, -1000, 0)
+                continue 
+            end
+            
+            if not IsModuleActive() or FlyMode then
+                platform.CFrame = CFrame.new(0, -1000, 0)
+                task.wait(0.1)
+                continue
+            end
+            
+            local huntTarget = GetCurrentTarget()
+            
+            if huntTarget and huntTarget.Character then
+                local enemy = huntTarget.Character
+                local humanoid = enemy:FindFirstChild("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        MoveToEnemy(enemy, hrp)
+                        Attack(enemy)
+                    end
+                end
+            else
+                platform.CFrame = CFrame.new(0, -1000, 0)
+            end
+        end
+    end)
+    
+    -- دوال التحكم
+    function AutoHuntModule:SetEnabled(state)
+        Enabled = state
+        if state then
+            KillNearest = false
+            FlyMode = false  -- لما تشغل الموديل، يتأكد انه نازل من السماء
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+        end
+        if not state then
+            if currentTween then pcall(function() currentTween:Cancel() end) end
+            currentTween = nil
+            platform.CFrame = CFrame.new(0, -1000, 0)
+            FlyMode = false
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+        end
+    end
+    
+    function AutoHuntModule:SetKillNearest(state)
+        KillNearest = state
+        if state then
+            Enabled = false
+            FlyMode = false
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+        end
+        if not state then
+            if currentTween then pcall(function() currentTween:Cancel() end) end
+            currentTween = nil
+            platform.CFrame = CFrame.new(0, -1000, 0)
+        end
+    end
+    
+    function AutoHuntModule:SetSelectedPlayer(player)
+        if player and not IsValidEnemy(player) then
+            print("[ARAKS HUB] لا يمكن تحديد هذا اللاعب (صديق أو نفس الفريق)")
+            return
+        end
+        SelectedPlayer = player
+        KillNearest = false
+        if player then
+            FlyMode = false
+            SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+        end
+    end
+    
+    function AutoHuntModule:GetSelectedPlayer()
+        return SelectedPlayer
+    end
+    
+    function AutoHuntModule:GetState()
+        return {
+            Enabled = Enabled,
+            KillNearest = KillNearest,
+            SelectedPlayer = SelectedPlayer,
+            FlyMode = FlyMode
+        }
+    end
+    
+    function AutoHuntModule:Stop()
+        if currentTween then pcall(function() currentTween:Cancel() end) end
+        currentTween = nil
+        platform.CFrame = CFrame.new(0, -1000, 0)
+        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+        Enabled = false
+        KillNearest = false
+        FlyMode = false
+        SavedTarget = nil
+    end
+end
+
+return AutoHuntModule
