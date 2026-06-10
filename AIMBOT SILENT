@@ -1,12 +1,201 @@
---[[
- .____                  ________ ___.    _____                           __                
- |    |    __ _______   \_____  \\_ |___/ ____\_ __  ______ ____ _____ _/  |_  ___________ 
- |    |   |  |  \__  \   /   |   \| __ \   __\  |  \/  ___// ___\\__  \\   __\/  _ \_  __ \
- |    |___|  |  // __ \_/    |    \ \_\ \  | |  |  /\___ \\  \___ / __ \|  | (  <_> )  | \/
- |_______ \____/(____  /\_______  /___  /__| |____//____  >\___  >____  /__|  \____/|__|   
-         \/          \/         \/    \/                \/     \/     \/                   
-          \_Welcome to LuaObfuscator.com   (Alpha 0.10.9) ~  Much Love, Ferib 
+-- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
+-- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام
+-- تم التعديل: فقط يتجنب الأصدقاء والتحالفات (حسب الفريق)
 
-]]--
+local AimbotModule = {}
 
-local v0={};do local v1=game:GetService("Players");local v2=v1.LocalPlayer;local v3=game:GetService("RunService");local v4=workspace.CurrentCamera;getgenv().AimbotActive=false;local v6={TargetPart="HumanoidRootPart",MaxDistance=3021 -1521 ,SwordRange=3974 -2974 ,HitboxSize=982 -(802 + 150) };local function v7(v21) local v22=0 -0 ;local v23;local v24;while true do if (v22==(1 -0)) then if (v21.Team==v2.Team) then return false;end v23=v21.Character;v22=2;end if (v22==(3 + 0)) then if ( not v24 or (v24.Health<=(997 -(915 + 82)))) then return false;end return true;end if (v22==(0 -0)) then if  not v21 then return false;end if (v21==v2) then return false;end v22=1 + 0 ;end if (v22==(2 -0)) then if  not v23 then return false;end v24=v23:FindFirstChildOfClass("Humanoid");v22=1190 -(1069 + 118) ;end end end local v8=nil;local v9=nil;local v10=Vector3.new(4 -2 ,2,1);local v11=Drawing.new("Line");v11.Color=Color3.fromRGB(180,0,557 -302 );v11.Thickness=1 + 1 ;v11.Transparency=1 -0 ;v11.Visible=false;local function v16() local v25=v2.Character;if  not v25 then return nil;end local v26=v25:FindFirstChild("HumanoidRootPart");if  not v26 then return nil;end local v27=nil;local v28=v6.MaxDistance;for v47,v48 in ipairs(v1:GetPlayers()) do if v7(v48) then local v52=v48.Character:FindFirstChild("HumanoidRootPart");local v53=v48.Character:FindFirstChildOfClass("Humanoid");if (v52 and v53 and (v53.Health>0)) then local v61=(v52.Position-v26.Position).Magnitude;if (v61<v28) then local v67=0 + 0 ;while true do if (v67==0) then v28=v61;v27=v48;break;end end end end end end return v27;end task.spawn(function() while true do if getgenv().AimbotActive then local v54=791 -(368 + 423) ;local v55;while true do if (v54==(0 -0)) then v55=v16();if (v55 and v55.Character) then local v68=18 -(10 + 8) ;local v69;while true do if ((3 -2)==v68) then if v69 then v9=v69.Position + Vector3.new(442 -(416 + 26) ,0.5 -0 ,0) ;else v9=nil;end break;end if (v68==0) then v8=v55;v69=v55.Character:FindFirstChild(v6.TargetPart);v68=1 + 0 ;end end else local v70=0 -0 ;while true do if (v70==0) then v8=nil;v9=nil;break;end end end break;end end else local v56=438 -(145 + 293) ;while true do if (v56==(430 -(44 + 386))) then v8=nil;v9=nil;break;end end end task.wait(1486.1 -(998 + 488) );end end);v3.RenderStepped:Connect(function() local v29=0 + 0 ;local v30;local v31;local v32;local v33;local v34;while true do if (v29==(2 + 0)) then v33,v34=v4:WorldToViewportPoint(v9);if (v32 and v34) then local v62=772 -(201 + 571) ;while true do if (v62==0) then v11.From=Vector2.new(v31.X,v31.Y);v11.To=Vector2.new(v33.X,v33.Y);v62=1139 -(116 + 1022) ;end if (v62==(4 -3)) then v11.Visible=true;break;end end else v11.Visible=false;end break;end if (1==v29) then if  not v30 then local v64=0 + 0 ;while true do if (0==v64) then v11.Visible=false;return;end end end v31,v32=v4:WorldToViewportPoint(v30.Position);v29=2;end if ((0 -0)==v29) then if ( not getgenv().AimbotActive or  not v9) then local v65=0;while true do if ((0 -0)==v65) then v11.Visible=false;return;end end end v30=v2.Character and v2.Character:FindFirstChild("HumanoidRootPart") ;v29=1;end end end);local v17;v17=hookmetamethod(game,"__index",function(v35,v36) local v37=859 -(814 + 45) ;while true do if (v37==0) then if ((v36=="Hit") and getgenv().AimbotActive and  not checkcaller()) then if (v8 and v8.Character and v8.Character:FindFirstChild("HumanoidRootPart")) then return v8.Character.HumanoidRootPart.CFrame;end end return v17(v35,v36);end end end);local v18;v18=hookmetamethod(game,"__namecall",function(v38,...) local v39=getnamecallmethod();local v40={...};if (getgenv().AimbotActive and v9 and  not checkcaller()) then if ((v39=="FireServer") or (v39=="InvokeServer")) then local v59=0 + 0 ;local v60;while true do if (v59==(0 + 0)) then v60=tostring(v38.Name):lower();if ( not string.find(v60,"m1") and  not string.find(v60,"click") and  not string.find(v60,"attack")) then local v77=885 -(261 + 624) ;local v78;while true do if (v77==(1 -0)) then if v78 then return v18(v38,unpack(v40));end break;end if (v77==(1080 -(1020 + 60))) then v78=false;for v81,v82 in ipairs(v40) do if (typeof(v82)=="Vector3") then v40[v81]=v9;v78=true;end end v77=1424 -(630 + 793) ;end end end break;end end end end return v18(v38,...);end);local v19=0 -0 ;v3.Heartbeat:Connect(function() if  not getgenv().AimbotActive then return;end local v41=tick();if ((v41-v19)<0.2) then return;end v19=v41;local v42=v2.Character;if  not v42 then return;end local v43=v42:FindFirstChild("HumanoidRootPart");if  not v43 then return;end for v49,v50 in ipairs(v1:GetPlayers()) do if v7(v50) then local v57=0 -0 ;local v58;while true do if (v57==0) then v58=v50.Character;if v58 then local v76=v58:FindFirstChild("HumanoidRootPart");if v76 then local v79=(v76.Position-v43.Position).Magnitude;if (v79<=v6.SwordRange) then local v80=Vector3.new(v6.HitboxSize,v6.HitboxSize,v6.HitboxSize);if (v76.Size~=v80) then v76.Size=v80;end if (v76.Transparency~=1) then v76.Transparency=1 + 0 ;end if (v76.CanCollide~=false) then v76.CanCollide=false;end if (v76.CanTouch~=true) then v76.CanTouch=true;end elseif (v76.Size~=v10) then v76.Size=v10;end end end break;end end end end end);print("[ARAKS HUB] INVISIBLE HITBOX & ANGLE FIX LOADED - يتجنب الأصدقاء فقط");v0.SetState=function(v44,v45) getgenv().AimbotActive=v45;end;end return v0;
+do
+    local Players = game:GetService("Players")
+    local player = Players.LocalPlayer
+    local RunService = game:GetService("RunService")
+    local Camera = workspace.CurrentCamera
+
+    getgenv().AimbotActive = false
+
+    local AimbotConfig = {
+        TargetPart = "HumanoidRootPart",
+        MaxDistance = 1500,
+        SwordRange = 1000,
+        HitboxSize = 30
+    }
+
+    -- ==================================================
+    -- فقط التحقق من العدو/الصديق حسب الفريق
+    -- ==================================================
+    
+    local function IsValidEnemy(plr)
+        if not plr then
+            return false
+        end
+        
+        -- لا تستهدف نفسك
+        if plr == player then
+            return false
+        end
+        
+        -- نفس الفريق = صديق -> يتجنبه
+        if plr.Team == player.Team then
+            return false
+        end
+        
+        -- التحقق إذا كان الهدف على قيد الحياة
+        local char = plr.Character
+        if not char then
+            return false
+        end
+        
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then
+            return false
+        end
+        
+        return true
+    end
+    
+    local CurrentTarget = nil
+    local CurrentTargetPos = nil
+    local DefaultSize = Vector3.new(2,2,1)
+
+    local TargetLine = Drawing.new("Line")
+    TargetLine.Color = Color3.fromRGB(180, 0, 255)
+    TargetLine.Thickness = 2
+    TargetLine.Transparency = 1
+    TargetLine.Visible = false
+
+    local function GetNearestEnemy()
+        local char = player.Character
+        if not char then return nil end
+        local myHrp = char:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return nil end
+        local nearest = nil
+        local nearestDist = AimbotConfig.MaxDistance
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if IsValidEnemy(pl) then
+                local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
+                local hum = pl.Character:FindFirstChildOfClass("Humanoid")
+                if hrp and hum and hum.Health > 0 then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestDist = dist
+                        nearest = pl
+                    end
+                end
+            end
+        end
+        return nearest
+    end
+
+    task.spawn(function()
+        while true do
+            if getgenv().AimbotActive then
+                local targetCandidate = GetNearestEnemy()
+                if targetCandidate and targetCandidate.Character then
+                    CurrentTarget = targetCandidate
+                    local hrp = targetCandidate.Character:FindFirstChild(AimbotConfig.TargetPart)
+                    if hrp then
+                        CurrentTargetPos = hrp.Position + Vector3.new(0, 0.5, 0)
+                    else
+                        CurrentTargetPos = nil
+                    end
+                else
+                    CurrentTarget = nil
+                    CurrentTargetPos = nil
+                end
+            else
+                CurrentTarget = nil
+                CurrentTargetPos = nil
+            end
+            task.wait(0.1)
+        end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        if not getgenv().AimbotActive or not CurrentTargetPos then
+            TargetLine.Visible = false
+            return
+        end
+        local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if not myHrp then TargetLine.Visible = false; return end
+        local myPos, myVisible = Camera:WorldToViewportPoint(myHrp.Position)
+        local targetPos, targetVisible = Camera:WorldToViewportPoint(CurrentTargetPos)
+        if myVisible and targetVisible then
+            TargetLine.From = Vector2.new(myPos.X, myPos.Y)
+            TargetLine.To = Vector2.new(targetPos.X, targetPos.Y)
+            TargetLine.Visible = true
+        else
+            TargetLine.Visible = false
+        end
+    end)
+
+    local oldIndex
+    oldIndex = hookmetamethod(game, "__index", function(self, index)
+        if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
+            if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("HumanoidRootPart") then
+                return CurrentTarget.Character.HumanoidRootPart.CFrame
+            end
+        end
+        return oldIndex(self, index)
+    end)
+
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
+            if method == "FireServer" or method == "InvokeServer" then
+                local remoteName = tostring(self.Name):lower()
+                if not string.find(remoteName, "m1") and not string.find(remoteName, "click") and not string.find(remoteName, "attack") then
+                    local changed = false
+                    for i, v in ipairs(args) do
+                        if typeof(v) == "Vector3" then
+                            args[i] = CurrentTargetPos
+                            changed = true
+                        end
+                    end
+                    if changed then return oldNamecall(self, unpack(args)) end
+                end
+            end
+        end
+        return oldNamecall(self, ...)
+    end)
+
+    local lastHitboxUpdate = 0
+    RunService.Heartbeat:Connect(function()
+        if not getgenv().AimbotActive then return end
+        local now = tick()
+        if now - lastHitboxUpdate < 0.2 then return end
+        lastHitboxUpdate = now
+        local char = player.Character
+        if not char then return end
+        local myHrp = char:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if IsValidEnemy(pl) then
+                local enemyChar = pl.Character
+                if enemyChar then
+                    local hrp = enemyChar:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local dist = (hrp.Position - myHrp.Position).Magnitude
+                        if dist <= AimbotConfig.SwordRange then
+                            local wantedSize = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                            if hrp.Size ~= wantedSize then hrp.Size = wantedSize end
+                            if hrp.Transparency ~= 1 then hrp.Transparency = 1 end
+                            if hrp.CanCollide ~= false then hrp.CanCollide = false end
+                            if hrp.CanTouch ~= true then hrp.CanTouch = true end
+                        else
+                            if hrp.Size ~= DefaultSize then hrp.Size = DefaultSize end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    print("[ARAKS HUB] INVISIBLE HITBOX & ANGLE FIX LOADED - يتجنب الأصدقاء فقط")
+
+    function AimbotModule:SetState(state)
+        getgenv().AimbotActive = state
+    end
+end
+
+return AimbotModule
