@@ -1,7 +1,6 @@
 -- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
--- تم التعديل: تصحيح مشكلة التركيز على فريق واحد فقط
--- الآن: يعمل على جميع اللاعبين الآخرين بغض النظر عن فريقهم (ما عدا نفس الفريق إذا أردت)
--- تم إضافة خيار لتحديد الفرق المستهدفة
+-- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام
+-- تم التعديل: القراصنة يستهدفون الكل، البحرية تستهدف القراصنة فقط
 
 local AimbotModule = {}
 
@@ -17,12 +16,11 @@ do
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1500,
         SwordRange = 1000,
-        HitboxSize = 30,
-        TargetSameTeam = true  -- true = يستهدف نفس الفريق أيضاً، false = يتجنب نفس الفريق
+        HitboxSize = 30
     }
 
     -- ==================================================
-    -- التحقق من الهدف (معدل)
+    -- التحقق من العدو/الصديق حسب الفريق (معدل)
     -- ==================================================
     
     local function IsValidEnemy(plr)
@@ -31,27 +29,38 @@ do
         -- لا تستهدف نفسك
         if plr == player then return false end
         
-        -- التحقق من وجود شخصية وحياة
+        -- التحقق إذا كان الهدف على قيد الحياة
         local char = plr.Character
         if not char then return false end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
         
-        -- التحقق من الفريق: إذا كان الإعداد يمنع استهداف نفس الفريق
-        if not AimbotConfig.TargetSameTeam then
-            if plr.Team == player.Team then return false end
+        -- ==================================================
+        -- القاعدة الجديدة:
+        -- القراصنة (Pirates) يستهدفون الكل (بحرية + قراصنة)
+        -- البحرية (Marines) تستهدف القراصنة فقط
+        -- ==================================================
+        
+        local myTeam = player.Team
+        local targetTeam = plr.Team
+        
+        -- إذا كان اللاعب قرصان -> يستهدف الكل
+        if myTeam and myTeam.Name == "Pirates" then
+            return true
         end
         
+        -- إذا كان اللاعب بحري -> يستهدف القراصنة فقط
+        if myTeam and myTeam.Name == "Marines" then
+            if targetTeam and targetTeam.Name == "Pirates" then
+                return true
+            else
+                return false
+            end
+        end
+        
+        -- في حال عدم وجود فريق (حماية)
         return true
-    end
-    
-    -- ==================================================
-    -- خيار لتغيير إعداد استهداف الفريق (دالة جديدة)
-    -- ==================================================
-    local function SetTargetSameTeam(state)
-        AimbotConfig.TargetSameTeam = state
-        print("[Aimbot] TargetSameTeam =", state)
     end
     
     local CurrentTarget = nil
@@ -64,28 +73,22 @@ do
     TargetLine.Transparency = 1
     TargetLine.Visible = false
 
-    -- الحصول على أقرب هدف (معدل)
     local function GetNearestEnemy()
         local char = player.Character
         if not char then return nil end
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return nil end
-        
         local nearest = nil
         local nearestDist = AimbotConfig.MaxDistance
-        
         for _, pl in ipairs(Players:GetPlayers()) do
             if IsValidEnemy(pl) then
-                local targetChar = pl.Character
-                if targetChar then
-                    local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-                    local hum = targetChar:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum and hum.Health > 0 then
-                        local dist = (hrp.Position - myHrp.Position).Magnitude
-                        if dist < nearestDist then
-                            nearestDist = dist
-                            nearest = pl
-                        end
+                local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
+                local hum = pl.Character:FindFirstChildOfClass("Humanoid")
+                if hrp and hum and hum.Health > 0 then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestDist = dist
+                        nearest = pl
                     end
                 end
             end
@@ -93,7 +96,6 @@ do
         return nearest
     end
 
-    -- تحديث الهدف بشكل دوري
     task.spawn(function()
         while true do
             if getgenv().AimbotActive then
@@ -118,22 +120,15 @@ do
         end
     end)
 
-    -- رسم الخط
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive or not CurrentTargetPos then
             TargetLine.Visible = false
             return
         end
-        
         local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-        if not myHrp then 
-            TargetLine.Visible = false
-            return 
-        end
-        
+        if not myHrp then TargetLine.Visible = false; return end
         local myPos, myVisible = Camera:WorldToViewportPoint(myHrp.Position)
         local targetPos, targetVisible = Camera:WorldToViewportPoint(CurrentTargetPos)
-        
         if myVisible and targetVisible then
             TargetLine.From = Vector2.new(myPos.X, myPos.Y)
             TargetLine.To = Vector2.new(targetPos.X, targetPos.Y)
@@ -143,7 +138,6 @@ do
         end
     end)
 
-    -- Hook __index للتأشير على الهدف
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
@@ -154,16 +148,13 @@ do
         return oldIndex(self, index)
     end)
 
-    -- Hook __namecall لتوجيه الضربات
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         local method = getnamecallmethod()
         local args = {...}
-        
         if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
-                -- تجاهل الريموتات الخاصة بالماوس والضربات العادية (حتى لا تتعارض)
                 if not string.find(remoteName, "m1") and not string.find(remoteName, "click") and not string.find(remoteName, "attack") then
                     local changed = false
                     for i, v in ipairs(args) do
@@ -172,30 +163,23 @@ do
                             changed = true
                         end
                     end
-                    if changed then 
-                        return oldNamecall(self, unpack(args))
-                    end
+                    if changed then return oldNamecall(self, unpack(args)) end
                 end
             end
         end
         return oldNamecall(self, ...)
     end)
 
-    -- تحديث الهيت بوكس
     local lastHitboxUpdate = 0
     RunService.Heartbeat:Connect(function()
         if not getgenv().AimbotActive then return end
-        
         local now = tick()
         if now - lastHitboxUpdate < 0.2 then return end
         lastHitboxUpdate = now
-        
         local char = player.Character
         if not char then return end
-        
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
-        
         for _, pl in ipairs(Players:GetPlayers()) do
             if IsValidEnemy(pl) then
                 local enemyChar = pl.Character
@@ -205,22 +189,12 @@ do
                         local dist = (hrp.Position - myHrp.Position).Magnitude
                         if dist <= AimbotConfig.SwordRange then
                             local wantedSize = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                            if hrp.Size ~= wantedSize then 
-                                hrp.Size = wantedSize 
-                            end
-                            if hrp.Transparency ~= 1 then 
-                                hrp.Transparency = 1 
-                            end
-                            if hrp.CanCollide ~= false then 
-                                hrp.CanCollide = false 
-                            end
-                            if hrp.CanTouch ~= true then 
-                                hrp.CanTouch = true 
-                            end
+                            if hrp.Size ~= wantedSize then hrp.Size = wantedSize end
+                            if hrp.Transparency ~= 1 then hrp.Transparency = 1 end
+                            if hrp.CanCollide ~= false then hrp.CanCollide = false end
+                            if hrp.CanTouch ~= true then hrp.CanTouch = true end
                         else
-                            if hrp.Size ~= DefaultSize then 
-                                hrp.Size = DefaultSize 
-                            end
+                            if hrp.Size ~= DefaultSize then hrp.Size = DefaultSize end
                         end
                     end
                 end
@@ -228,22 +202,11 @@ do
         end
     end)
 
-    print("[ARAKS HUB] AIMBOT LOADED - يستهدف جميع اللاعبين (يمكنك تفعيل استهداف نفس الفريق)")
+    print("[ARAKS HUB] AIMBOT LOADED - قراصنة: يستهدفون الكل | بحرية: يستهدفون القراصنة فقط")
 
-    -- API
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
-        print("[Aimbot] State:", state)
     end
-    
-    function AimbotModule:SetTargetSameTeam(state)
-        SetTargetSameTeam(state)
-    end
-    
-    function AimbotModule:GetState()
-        return getgenv().AimbotActive
-    end
-
 end
 
 return AimbotModule
