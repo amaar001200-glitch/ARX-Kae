@@ -1,6 +1,7 @@
--- █ AIMBOT (SILENT) + PLAYERS HITBOX (للسيف فقط)
--- تم استبدال Hitbox البوتات بـ Hitbox اللاعبين
--- الخط الوردي موجود كما هو
+-- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
+-- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام
+-- تم التعديل: القراصنة يستهدفون الكل، البحرية تستهدف القراصنة فقط
+-- تم استبدال Hitbox البوتات بـ Hitbox اللاعبين (حجم 60 - مخفي)
 
 local AimbotModule = {}
 
@@ -13,43 +14,56 @@ do
 
     getgenv().AimbotActive = false
 
-    -- ========== إعدادات Aimbot (لم تتغير) ==========
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1500,
         SwordRange = 1000,
-        HitboxSize = 30
     }
 
-    -- ========== إعدادات Hitbox الجديدة (للاعبين) ==========
-    local Settings = {
-        HitboxSize = Vector3.new(60, 60, 60),
-        HitboxTransparency = 1,
+    -- ========== Hitbox اللاعبين (جديد) ==========
+    local HitboxSettings = {
+        Size = Vector3.new(60, 60, 60),
+        Transparency = 1,
     }
     local IsHitboxActive = false
 
-    -- استدعاء CombatController للسيف
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
 
-    -- ========== دوال Aimbot (لم تتغير) ==========
+    -- ==================================================
+    -- التحقق من العدو/الصديق حسب الفريق (معدل)
+    -- ==================================================
+    
     local function IsValidEnemy(plr)
         if not plr then return false end
+        
+        -- لا تستهدف نفسك
         if plr == player then return false end
+        
+        -- التحقق إذا كان الهدف على قيد الحياة
         local char = plr.Character
         if not char then return false end
+        
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
+        
+        -- ==================================================
+        -- القاعدة الجديدة:
+        -- القراصنة (Pirates) يستهدفون الكل (بحرية + قراصنة)
+        -- البحرية (Marines) تستهدف القراصنة فقط
+        -- ==================================================
         
         local myTeam = player.Team
         local targetTeam = plr.Team
         
+        -- إذا كان اللاعب قرصان -> يستهدف الكل
         if myTeam and myTeam.Name == "Pirates" then
             return true
         end
         
+        -- إذا كان اللاعب بحري -> يستهدف القراصنة فقط
         if myTeam and myTeam.Name == "Marines" then
             if targetTeam and targetTeam.Name == "Pirates" then
                 return true
@@ -57,6 +71,8 @@ do
                 return false
             end
         end
+        
+        -- في حال عدم وجود فريق (حماية)
         return true
     end
     
@@ -64,7 +80,6 @@ do
     local CurrentTargetPos = nil
     local DefaultSize = Vector3.new(2,2,1)
 
-    -- الخط الوردي (موجود)
     local TargetLine = Drawing.new("Line")
     TargetLine.Color = Color3.fromRGB(180, 0, 255)
     TargetLine.Thickness = 2
@@ -168,27 +183,26 @@ do
         return oldNamecall(self, ...)
     end)
 
-    -- ========== هـنــــــا: تم استبدال Hitbox البوتات بـ Hitbox اللاعبين ==========
+    -- ========== هـنــــــا: Hitbox اللاعبين بدلاً من Hitbox البوتات ==========
     
-    -- وظيفة تعديل Hitbox اللاعبين (للسيف فقط)
-    local function modifyPlayerHitbox(targetCharacter)
+    local function modifyPlayerHitbox(targetChar)
         if not IsHitboxActive then return end
-        if not targetCharacter then return end
-        if targetCharacter.Name == player.Name then return end
+        if not targetChar then return end
+        if targetChar.Name == player.Name then return end
         
-        local rootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
-        local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+        local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
+        local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
         
         if rootPart and humanoid and humanoid.Health > 0 then
             pcall(function()
-                rootPart.Size = Settings.HitboxSize
-                rootPart.Transparency = Settings.HitboxTransparency
+                rootPart.Size = HitboxSettings.Size
+                rootPart.Transparency = HitboxSettings.Transparency
                 rootPart.CanCollide = false
                 
                 if CombatController then
                     task.spawn(function()
                         pcall(function()
-                            CombatController.runHitDetection(targetCharacter)
+                            CombatController.runHitDetection(targetChar)
                         end)
                     end)
                 end
@@ -204,7 +218,6 @@ do
         if now - lastHitboxUpdate < 0.2 then return end
         lastHitboxUpdate = now
         
-        -- استهداف اللاعبين الحقيقيين (وليس البوتات)
         for _, pl in ipairs(Players:GetPlayers()) do
             if pl ~= player and pl.Character then
                 modifyPlayerHitbox(pl.Character)
@@ -212,7 +225,6 @@ do
         end
     end)
 
-    -- دالة إعادة الحجم الأصلي
     local function resetPlayerSizes()
         for _, pl in ipairs(Players:GetPlayers()) do
             if pl ~= player and pl.Character then
@@ -227,29 +239,28 @@ do
         end
     end
 
-    -- ========== API للتحكم ==========
+    print("[ARAKS HUB] AIMBOT LOADED - قراصنة: يستهدفون الكل | بحرية: يستهدفون القراصنة فقط")
+    print("[ARAKS HUB] Hitbox اللاعبين مثبت - حجم 60 | مخفي")
+
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
     end
-
-    -- زر Hitbox منفصل
+    
     function AimbotModule:SetHitboxEnabled(state)
         IsHitboxActive = state
         if not state then
             resetPlayerSizes()
         end
     end
-
+    
     function AimbotModule:SetHitboxSize(sizeValue)
         local newSize = math.clamp(sizeValue, 10, 60)
-        Settings.HitboxSize = Vector3.new(newSize, newSize, newSize)
+        HitboxSettings.Size = Vector3.new(newSize, newSize, newSize)
     end
-
+    
     function AimbotModule:IsHitboxEnabled()
         return IsHitboxActive
     end
-
-    print("[ARAKS HUB] AIMBOT LOADED - Hitbox البوتات تم استبداله بـ Hitbox اللاعبين")
 end
 
 return AimbotModule
