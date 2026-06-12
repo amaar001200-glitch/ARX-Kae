@@ -1,5 +1,5 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM + SKILLS)
--- version 1.4 (Fixed: Fly system only works when module is enabled)
+-- version 1.5 (Fixed: Pirates target everyone + Fly system fixed)
 
 local AutoHuntModule = {}
 
@@ -23,7 +23,8 @@ do
     local SkillBusy = false
     
     -- ==================================================
-    -- نظام تجنب الأصدقاء والتحالفات
+    -- نظام تجنب الأصدقاء والتحالفات (معدل)
+    -- القراصنة يستهدفون الكل، البحرية تستهدف القراصنة فقط
     -- ==================================================
     
     local function IsValidEnemy(plr)
@@ -33,11 +34,6 @@ do
         
         -- لا تستهدف نفسك
         if plr == LocalPlayer then
-            return false
-        end
-        
-        -- نفس الفريق = صديق -> يتجنبه
-        if plr.Team == LocalPlayer.Team then
             return false
         end
         
@@ -52,15 +48,39 @@ do
             return false
         end
         
+        -- ==================================================
+        -- نظام الفريق المعدل:
+        -- القراصنة (Pirates) يستهدفون الكل (بحرية + قراصنة)
+        -- البحرية (Marines) تستهدف القراصنة فقط
+        -- ==================================================
+        
+        local myTeam = LocalPlayer.Team
+        local targetTeam = plr.Team
+        
+        -- إذا كان اللاعب قرصان -> يستهدف الكل (أي فريق)
+        if myTeam and myTeam.Name == "Pirates" then
+            return true
+        end
+        
+        -- إذا كان اللاعب بحري -> يستهدف القراصنة فقط
+        if myTeam and myTeam.Name == "Marines" then
+            if targetTeam and targetTeam.Name == "Pirates" then
+                return true
+            else
+                return false
+            end
+        end
+        
+        -- في حال عدم وجود فريق (حماية) -> يستهدف الكل
         return true
     end
     
     -- ==================================================
-    -- نظام الطيران عند انخفاض الدم (يشتغل فقط لما الموديل شغال)
+    -- نظام الطيران عند انخفاض الدم (معدل - ارتفاع أقل)
     -- ==================================================
     
-    local LOW_HEALTH_FLY = 5000
-    local SAFE_HEALTH_RETURN = 8000
+    local LOW_HEALTH_FLY = 4000
+    local SAFE_HEALTH_RETURN = 6000
     local FlyMode = false
     local SavedTarget = nil
     local FlyPosition = nil
@@ -84,7 +104,7 @@ do
     -- متغيرات التشغيل
     local currentTween = nil
     
-    -- المنصة
+    -- المنصة الأرضية
     local platform = Instance.new("Part")
     platform.Name = "ARAKS_Platform"
     platform.Size = Vector3.new(10, 0.5, 10)
@@ -180,7 +200,8 @@ do
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
         
-        FlyPosition = myHrp.Position + Vector3.new(0, 7000, 0)
+        -- تغيير الارتفاع من 7000 إلى 300 فقط لتجنب المشاكل
+        FlyPosition = myHrp.Position + Vector3.new(0, 300, 0)
         
         SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
         SkyPlatform.CanCollide = true
@@ -252,7 +273,7 @@ do
     end
     
     -- ==================================================
-    -- نظام مراقبة الدم والطيران (يشتغل فقط لما الموديل شغال)
+    -- نظام مراقبة الدم والطيران (معدل)
     -- ==================================================
     task.spawn(function()
         while true do
@@ -268,7 +289,7 @@ do
                         SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
                     end
                 end
-                continue
+                goto continue
             end
             
             local myHealth = GetMyHealth()
@@ -297,6 +318,8 @@ do
                     SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
                 end
             end
+            
+            ::continue::
         end
     end)
     
@@ -304,9 +327,9 @@ do
     task.spawn(function()
         while true do
             task.wait(0.35)
-            if not IsAlive() then continue end
-            if not IsModuleActive() then continue end
-            if FlyMode then continue end
+            if not IsAlive() then goto continue end
+            if not IsModuleActive() then goto continue end
+            if FlyMode then goto continue end
             
             local target = GetCurrentTarget()
             
@@ -336,6 +359,8 @@ do
                     end
                 end
             end
+            
+            ::continue::
         end
     end)
     
@@ -345,13 +370,13 @@ do
             task.wait()
             if not IsAlive() then 
                 platform.CFrame = CFrame.new(0, -1000, 0)
-                continue 
+                goto continue
             end
             
             if not IsModuleActive() or FlyMode then
                 platform.CFrame = CFrame.new(0, -1000, 0)
                 task.wait(0.1)
-                continue
+                goto continue
             end
             
             local huntTarget = GetCurrentTarget()
@@ -369,6 +394,8 @@ do
             else
                 platform.CFrame = CFrame.new(0, -1000, 0)
             end
+            
+            ::continue::
         end
     end)
     
@@ -377,7 +404,7 @@ do
         Enabled = state
         if state then
             KillNearest = false
-            FlyMode = false  -- لما تشغل الموديل، يتأكد انه نازل من السماء
+            FlyMode = false
             SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
         end
         if not state then
