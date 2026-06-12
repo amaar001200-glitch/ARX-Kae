@@ -1,6 +1,5 @@
--- █ ARAKS HUB AIMBOT - ULTIMATE HITBOX LOCK (حتى المسافات البعيدة)
--- ✅ يثبت الـ Hitbox بحجم 30x30 حتى لو ابتعد الخصم 1000 متر
--- ✅ بدون تجميد | ✅ بدون ضياع ضربات
+-- █ ARAKS HUB AIMBOT - ULTIMATE EDITION
+-- ✅ Hitbox حجم 50 (ضخم جداً) ✅ ظاهر (مش مخفي) ✅ بدون تجميد المهارات
 
 local AimbotModule = {}
 
@@ -10,19 +9,20 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
 getgenv().AimbotActive = false
 
 -- =========================
--- CONFIG
+-- CONFIG (حجم ضخم جداً)
 -- =========================
 local Config = {
     TargetPart = "HumanoidRootPart",
     MaxDistance = 1000,
     Prediction = 0.14,
-    HitboxSize = 30  -- حجم ضخم
+    HitboxSize = 50  -- 🔥 حجم ضخم جداً (50x50) مناسب للسيف المستقيم الطويل
 }
 
 -- =========================
@@ -30,6 +30,7 @@ local Config = {
 -- =========================
 local CurrentTarget = nil
 local CurrentTargetPos = nil
+local isUsingSkill = false
 
 -- =========================
 -- TEAM CHECK
@@ -82,42 +83,40 @@ local function GetNearestEnemy()
 end
 
 -- =========================
--- 🔥 HITBOX LOCK (يثبت الحجم حتى لو ابتعد الخصم)
+-- 🔥 MASSIVE VISIBLE HITBOX (حجم 50 وظاهر)
 -- =========================
-local function ForceMassiveHitbox(plr)
-    if not plr or not plr.Character then return false end
+local function ApplyMassiveHitbox(plr)
+    if not plr or not plr.Character then return end
     
     local root = plr.Character:FindFirstChild("HumanoidRootPart")
     local hum = plr.Character:FindFirstChildOfClass("Humanoid")
     
     if root and hum and hum.Health > 0 then
-        local targetSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+        local newSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
         
-        -- نتحقق إذا الحجم تغير (بسبب بعد المسافة أو غيرها)
-        if root.Size ~= targetSize then
-            pcall(function()
-                root.Size = targetSize
-                root.CanCollide = false
-                root.Transparency = 0
-                
-                -- نثبت كل أجزاء الجسم أيضاً
-                local allParts = plr.Character:GetChildren()
-                for _, part in ipairs(allParts) do
-                    if part:IsA("BasePart") then
-                        part.Size = targetSize
-                        part.CanCollide = false
-                        part.Transparency = 0
-                    end
+        pcall(function()
+            -- 🔥 حجم ضخم 50
+            root.Size = newSize
+            root.CanCollide = false
+            root.Transparency = 0  -- 🔥 ظاهر (مش مخفي)
+            root.Material = Enum.Material.Neon
+            
+            -- 🔥 نكبر كل أجزاء الجسم
+            local allParts = plr.Character:GetChildren()
+            for _, part in ipairs(allParts) do
+                if part:IsA("BasePart") then
+                    part.Size = newSize
+                    part.CanCollide = false
+                    part.Transparency = 0
+                    part.Material = Enum.Material.Neon
                 end
-            end)
-            return true
-        end
+            end
+        end)
     end
-    return false
 end
 
 -- =========================
--- AIMBOT UPDATE LOOP (سريع جداً)
+-- AIMBOT UPDATE LOOP
 -- =========================
 RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive then
@@ -134,6 +133,9 @@ RunService.RenderStepped:Connect(function()
             CurrentTarget = target
             local velocity = hrp.AssemblyLinearVelocity
             CurrentTargetPos = hrp.Position + (velocity * Config.Prediction)
+            
+            -- 🔥 نطبق الهيت بوكس الضخم كل مره
+            ApplyMassiveHitbox(target)
         else
             CurrentTarget = nil
             CurrentTargetPos = nil
@@ -145,27 +147,47 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================
--- 🔥 HITBOX FORCE LOOP (يشتغل بشكل منفصل ومستمر)
--- كل 0.1 ثانية نثبت الهيت بوكس كبيراً - حتى لو ابتعد الخصم
+-- 🔥 HITBOX FORCE LOOP (يثبت الحجم كل 0.05 ثانية - سريع جداً)
 -- =========================
 task.spawn(function()
-    while task.wait(0.1) do  -- 10 مرات في الثانية (خفيف ولا يسبب تجميد)
+    while task.wait(0.05) do  -- 20 مرة في الثانية
         if getgenv().AimbotActive and CurrentTarget then
-            ForceMassiveHitbox(CurrentTarget)
+            ApplyMassiveHitbox(CurrentTarget)
         end
     end
 end)
 
 -- =========================
--- VISUAL LINE
+-- 🔥 منع تجميد المهارات (حل مشكلة الضغط على المهارة)
+-- =========================
+-- نكتشف لما المستخدم يضغط مهارة
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- نتحقق إذا كان الضغط على مفتاح مهارة (Z, X, C, V, G, إلخ)
+    local key = input.KeyCode.Name
+    local skillKeys = {"Z", "X", "C", "V", "B", "G", "Q", "E", "R", "T", "F"}
+    
+    for _, skillKey in ipairs(skillKeys) do
+        if key == skillKey then
+            isUsingSkill = true
+            task.wait(0.2)  -- مدة استخدام المهارة
+            isUsingSkill = false
+            break
+        end
+    end
+end)
+
+-- =========================
+-- VISUAL LINE (أطول وأعرض)
 -- =========================
 local Line = Drawing.new("Line")
 Line.Color = Color3.fromRGB(180, 0, 255)
-Line.Thickness = 6
+Line.Thickness = 8  -- أعرض
 Line.Transparency = 1
 Line.Visible = false
 
-local LineExtension = 250
+local LineExtension = 300  -- أطول
 
 RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive or not CurrentTargetPos then
@@ -198,7 +220,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================
--- SILENT AIM
+-- SILENT AIM (مع منع التجميد أثناء المهارات)
 -- =========================
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -207,6 +229,7 @@ oldIndex = hookmetamethod(game, "__index", function(self, index)
         and not checkcaller()
         and CurrentTarget
         and CurrentTarget.Character
+        and not isUsingSkill  -- 🔥 منع التجميد أثناء استخدام المهارة
     then
         local root = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
         if root then
@@ -217,7 +240,7 @@ oldIndex = hookmetamethod(game, "__index", function(self, index)
 end)
 
 -- =========================
--- REMOTE HOOK
+-- REMOTE HOOK (معدل لمنع التجميد)
 -- =========================
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -227,6 +250,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     if getgenv().AimbotActive
         and CurrentTargetPos
         and not checkcaller()
+        and not isUsingSkill  -- 🔥 منع التجميد أثناء استخدام المهارة
         and (method == "FireServer" or method == "InvokeServer")
     then
         local name = tostring(self.Name):lower()
@@ -258,7 +282,7 @@ function AimbotModule:SetState(state)
     end
 end
 
-print("[ARAKS HUB] AIMBOT - HITBOX LOCK ACTIVE | الحجم يثبت 30 حتى لو ابتعد الخصم")
+print("[ARAKS HUB] AIMBOT - حجم 50 ظاهر | بدون تجميد المهارات | ضربات دقيقة")
 
 end
 
