@@ -1,0 +1,199 @@
+-- █ AIMBOT (SILENT) - ADVANCED COMPATIBILITY VERSION
+-- تم إصلاح تأخير التتبع ومعالجة المقذوفات لسيف البيج مام والمهارات
+
+local AimbotModule = {}
+
+do
+    local Players = game:GetService("Players")
+    local player = Players.LocalPlayer
+    local RunService = game:GetService("RunService")
+    local Camera = workspace.CurrentCamera
+
+    getgenv().AimbotActive = false
+
+    local AimbotConfig = {
+        TargetPart = "HumanoidRootPart",
+        MaxDistance = 1500,
+        SwordRange = 1000,
+        HitboxSize = 30
+    }
+    
+    local function IsValidEnemy(plr)
+        if not plr or plr == player then return false end
+        local char = plr.Character
+        if not char then return false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return false end
+        
+        local myTeam = player.Team
+        local targetTeam = plr.Team
+        
+        if myTeam and myTeam.Name == "Pirates" then return true end
+        if myTeam and myTeam.Name == "Marines" then
+            if targetTeam and targetTeam.Name == "Pirates" then return true else return false end
+        end
+        return true
+    end
+    
+    local CurrentTarget = nil
+    local CurrentTargetPos = nil
+    local DefaultSize = Vector3.new(2,2,1)
+
+    local TargetLine = Drawing.new("Line")
+    TargetLine.Color = Color3.fromRGB(180, 0, 255)
+    TargetLine.Thickness = 2
+    TargetLine.Transparency = 1
+    TargetLine.Visible = false
+
+    local function GetNearestEnemy()
+        local char = player.Character
+        if not char then return nil end
+        local myHrp = char:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return nil end
+        local nearest = nil
+        local nearestDist = AimbotConfig.MaxDistance
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if IsValidEnemy(pl) then
+                local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
+                local hum = pl.Character:FindFirstChildOfClass("Humanoid")
+                if hrp and hum and hum.Health > 0 then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestDist = dist
+                        nearest = pl
+                    end
+                end
+            end
+        end
+        return nearest
+    end
+
+    -- [تعديل] جعل الفحص مستمر وسريع للهدف، لكن جلب الإحداثيات يتم فورياً في الرندر
+    task.spawn(function()
+        while true do
+            if getgenv().AimbotActive then
+                CurrentTarget = GetNearestEnemy()
+            else
+                CurrentTarget = nil
+            end
+            task.wait(0.05) -- فحص أسرع مرتين من السابق للهدف الأقرب
+        end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        -- [تعديل جوهري] جلب إحداثيات الهدف في كل فريم لمنع أي لاق أو تأخر في توجيه الضربات
+        if getgenv().AimbotActive and CurrentTarget and CurrentTarget.Character then
+            local hrp = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
+            if hrp then
+                CurrentTargetPos = hrp.Position
+            else
+                CurrentTargetPos = nil
+            end
+        else
+            CurrentTargetPos = nil
+        end
+
+        if not getgenv().AimbotActive or not CurrentTargetPos then
+            TargetLine.Visible = false
+            return
+        end
+        local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if not myHrp then TargetLine.Visible = false; return end
+        local myPos, myVisible = Camera:WorldToViewportPoint(myHrp.Position)
+        local targetPos, targetVisible = Camera:WorldToViewportPoint(CurrentTargetPos)
+        if myVisible and targetVisible then
+            TargetLine.From = Vector2.new(myPos.X, myPos.Y)
+            TargetLine.To = Vector2.new(targetPos.X, targetPos.Y)
+            TargetLine.Visible = true
+        else
+            TargetLine.Visible = false
+        end
+    end)
+
+    -- اعتراض الماوس (صيد الـ Hit للمهارات والسيف)
+    local oldIndex
+    oldIndex = hookmetamethod(game, "__index", function(self, index)
+        if getgenv().AimbotActive and not checkcaller() then
+            if self == player:GetMouse() and (index == "Hit" or index == "Target") then
+                if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("HumanoidRootPart") then
+                    if index == "Hit" then
+                        -- توجيه دقيق بإضافة CFrame ينظر نحو الهدف مباشرة
+                        return CurrentTarget.Character.HumanoidRootPart.CFrame
+                    elseif index == "Target" then
+                        return CurrentTarget.Character.HumanoidRootPart
+                    end
+                end
+            end
+        end
+        return oldIndex(self, index)
+    end)
+
+    -- [تعديل احترافي] اعتراض ريموتات المقذوفات والـ Raycast بشكل ذكي ودقيق
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
+            if method == "FireServer" or method == "InvokeServer" then
+                local remoteName = tostring(self.Name):lower()
+                
+                -- استثناء ضربات الـ M1 والضربات العادية لترك الـ Hitbox يقوم بعمله
+                if not string.find(remoteName, "m1") and not string.find(remoteName, "click") and not string.find(remoteName, "attack") then
+                    for i, v in ipairs(args) do
+                        -- إذا كان الريموت يرسل Vector3 (موقع الضرب)، يتم استبداله بموقع الخصم الفعلي الحالي
+                        if typeof(v) == "Vector3" then
+                            -- التأكد من أننا نغير وجهة الضرب المقذوف وليس إحداثيات اللاعب نفسه
+                            if i == 1 or i == 2 or remoteName:find("skill") or remoteName:find("ability") then
+                                args[i] = CurrentTargetPos
+                            end
+                        end
+                    end
+                    return oldNamecall(self, unpack(args))
+                end
+            end
+        end
+        return oldNamecall(self, ...)
+    end)
+
+    -- تضخيم الـ Hitbox للـ M1 والـ Close Range
+    local lastHitboxUpdate = 0
+    RunService.Heartbeat:Connect(function()
+        if not getgenv().AimbotActive then return end
+        local now = tick()
+        if now - lastHitboxUpdate < 0.1 then return end
+        lastHitboxUpdate = now
+        local char = player.Character
+        if not char then return end
+        local myHrp = char:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if IsValidEnemy(pl) then
+                local enemyChar = pl.Character
+                if enemyChar then
+                    local hrp = enemyChar:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local dist = (hrp.Position - myHrp.Position).Magnitude
+                        if dist <= AimbotConfig.SwordRange then
+                            local wantedSize = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                            if hrp.Size ~= wantedSize then hrp.Size = wantedSize end
+                            if hrp.Transparency ~= 0.8 then hrp.Transparency = 0.8 end -- جعلها مرئية قليلاً للتأكد من عملها
+                            if hrp.CanCollide ~= false then hrp.CanCollide = false end
+                            if hrp.CanTouch ~= true then hrp.CanTouch = true end
+                        else
+                            if hrp.Size ~= DefaultSize then hrp.Size = DefaultSize end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    print("[ARX HUB] OPTIMIZED AIMBOT LOADED - سيف البيج مام والمهارات تعمل الآن بدقة عالية")
+
+    function AimbotModule:SetState(state)
+        getgenv().AimbotActive = state
+    end
+end
+
+return AimbotModule
