@@ -1,4 +1,5 @@
--- █ ARAKS HUB AIMBOT - CLEAN FULL VERSION
+-- █ ARAKS HUB AIMBOT - FULL FIXED VERSION (COMBO READY)
+-- ✅ لا ضياع ضربات | ✅ Hitbox ثابت 30 | ✅ بدون تجميد
 
 local AimbotModule = {}
 
@@ -18,9 +19,9 @@ getgenv().AimbotActive = false
 -- =========================
 local Config = {
     TargetPart = "HumanoidRootPart",
-    MaxDistance = 900,
+    MaxDistance = 1000,
     Prediction = 0.14,
-    HitboxSize = 18
+    HitboxSize = 30  -- حجم ضخم للسيف المستقيم والكومبو السريع
 }
 
 -- =========================
@@ -28,17 +29,15 @@ local Config = {
 -- =========================
 local CurrentTarget = nil
 local CurrentTargetPos = nil
+local lastTarget = nil
 
 -- =========================
 -- TEAM CHECK
 -- =========================
 local function IsValidEnemy(plr)
-
     if not plr or plr == player then return false end
-
     local char = plr.Character
     if not char then return false end
-
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return false end
 
@@ -48,11 +47,9 @@ local function IsValidEnemy(plr)
     if myTeam and myTeam.Name == "Pirates" then
         return true
     end
-
     if myTeam and myTeam.Name == "Marines" then
         return targetTeam and targetTeam.Name == "Pirates"
     end
-
     return true
 end
 
@@ -60,90 +57,147 @@ end
 -- GET NEAREST TARGET
 -- =========================
 local function GetNearestEnemy()
-
     local char = player.Character
     if not char then return nil end
-
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
     local nearest = nil
     local distLimit = Config.MaxDistance
+    local rootPos = root.Position
 
-    for _,plr in ipairs(Players:GetPlayers()) do
-
+    for _, plr in ipairs(Players:GetPlayers()) do
         if IsValidEnemy(plr) and plr.Character then
-
             local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-
             if hrp then
-
-                local dist = (hrp.Position - root.Position).Magnitude
-
+                local dist = (hrp.Position - rootPos).Magnitude
                 if dist < distLimit then
                     distLimit = dist
                     nearest = plr
                 end
-
             end
         end
     end
-
     return nearest
 end
 
 -- =========================
--- UPDATE LOOP (OPTIMIZED)
+-- MASSIVE HITBOX SYSTEM (ثابت ولا يختفي حتى أثناء الكومبو)
 -- =========================
-task.spawn(function()
+local EnlargedTargets = {}
 
-    while task.wait(0.18) do
-
-        if not getgenv().AimbotActive then
-            CurrentTarget = nil
-            CurrentTargetPos = nil
-            continue
-        end
-
-        local target = GetNearestEnemy()
-
-        if target and target.Character then
-
-            local hrp = target.Character:FindFirstChild(Config.TargetPart)
-
-            if hrp then
-
-                CurrentTarget = target
-
-                local velocity = hrp.AssemblyLinearVelocity
-
-                CurrentTargetPos =
-                    hrp.Position + (velocity * Config.Prediction)
-
-            else
-                CurrentTarget = nil
-                CurrentTargetPos = nil
+local function ApplyMassiveHitbox(plr)
+    if not plr or not plr.Character then return end
+    
+    local root = plr.Character:FindFirstChild("HumanoidRootPart")
+    local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+    
+    if root and hum and hum.Health > 0 then
+        local newSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+        
+        pcall(function()
+            root.Size = newSize
+            root.CanCollide = false
+            root.Transparency = 1
+            
+            -- نكبر كل أجزاء الجسم عشان الضربات ما تضيع
+            local allParts = plr.Character:GetChildren()
+            for _, part in ipairs(allParts) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Size = newSize
+                    part.CanCollide = false
+                end
             end
+            
+            EnlargedTargets[plr] = true
+        end)
+    end
+end
 
+local function ResetHitbox(plr)
+    if not plr or not plr.Character then return end
+    
+    if EnlargedTargets[plr] then
+        pcall(function()
+            local root = plr.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                root.Size = Vector3.new(2, 2, 2)
+                root.CanCollide = true
+            end
+            
+            local allParts = plr.Character:GetChildren()
+            for _, part in ipairs(allParts) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Size = Vector3.new(2, 2, 2)
+                    part.CanCollide = true
+                end
+            end
+            
+            EnlargedTargets[plr] = nil
+        end)
+    end
+end
+
+-- =========================
+-- AIMBOT UPDATE LOOP (بسرعة عالية لمنع ضياع الضربات)
+-- =========================
+RunService.RenderStepped:Connect(function()
+    if not getgenv().AimbotActive then
+        CurrentTarget = nil
+        CurrentTargetPos = nil
+        if lastTarget then
+            ResetHitbox(lastTarget)
+            lastTarget = nil
+        end
+        return
+    end
+
+    -- نحدد أقرب هدف
+    local target = GetNearestEnemy()
+    
+    if target and target.Character then
+        local hrp = target.Character:FindFirstChild(Config.TargetPart)
+        if hrp then
+            CurrentTarget = target
+            local velocity = hrp.AssemblyLinearVelocity
+            CurrentTargetPos = hrp.Position + (velocity * Config.Prediction)
+            
+            -- نطبق الـ Hitbox الضخم فوراً عند تغيير الهدف
+            if target ~= lastTarget then
+                if lastTarget then
+                    ResetHitbox(lastTarget)
+                end
+                ApplyMassiveHitbox(target)
+                lastTarget = target
+            else
+                -- نتأكد أن الـ Hitbox باقي كبير (مهم جداً للكومبو السريع)
+                local root = target.Character:FindFirstChild("HumanoidRootPart")
+                if root and root.Size.X < Config.HitboxSize - 5 then
+                    ApplyMassiveHitbox(target)
+                end
+            end
         else
             CurrentTarget = nil
             CurrentTargetPos = nil
         end
-
+    else
+        CurrentTarget = nil
+        CurrentTargetPos = nil
     end
 end)
 
 -- =========================
--- VISUAL LINE
+-- VISUAL LINE (أطول وأعرض)
 -- =========================
 local Line = Drawing.new("Line")
-Line.Color = Color3.fromRGB(180,0,255)
-Line.Thickness = 2
+Line.Color = Color3.fromRGB(180, 0, 255)
+Line.Thickness = 6
 Line.Transparency = 1
 Line.Visible = false
 
-RunService.RenderStepped:Connect(function()
+local LineExtension = 250
 
+RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive or not CurrentTargetPos then
         Line.Visible = false
         return
@@ -151,18 +205,22 @@ RunService.RenderStepped:Connect(function()
 
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-
     if not root then
         Line.Visible = false
         return
     end
 
-    local a,va = Camera:WorldToViewportPoint(root.Position)
-    local b,vb = Camera:WorldToViewportPoint(CurrentTargetPos)
+    local a, va = Camera:WorldToViewportPoint(root.Position)
+    local b, vb = Camera:WorldToViewportPoint(CurrentTargetPos)
 
     if va and vb then
-        Line.From = Vector2.new(a.X,a.Y)
-        Line.To = Vector2.new(b.X,b.Y)
+        local fromPoint = Vector2.new(a.X, a.Y)
+        local toPoint = Vector2.new(b.X, b.Y)
+        local direction = (toPoint - fromPoint).Unit
+        local extendedPoint = toPoint + (direction * LineExtension)
+        
+        Line.From = fromPoint
+        Line.To = extendedPoint
         Line.Visible = true
     else
         Line.Visible = false
@@ -170,52 +228,44 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================
--- SILENT AIM
+-- SILENT AIM (مصحح للكومبو السريع)
 -- =========================
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, index)
-
     if index == "Hit"
-    and getgenv().AimbotActive
-    and not checkcaller()
-    and CurrentTarget
-    and CurrentTarget.Character
+        and getgenv().AimbotActive
+        and not checkcaller()
+        and CurrentTarget
+        and CurrentTarget.Character
     then
-
         local root = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-
         if root then
             return root.CFrame
         end
     end
-
     return oldIndex(self, index)
 end)
 
 -- =========================
--- SAFE REMOTE HOOK
+-- REMOTE HOOK (مصحح وسريع)
 -- =========================
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-
     local method = getnamecallmethod()
     local args = {...}
-
+    
     if getgenv().AimbotActive
-    and CurrentTargetPos
-    and not checkcaller()
-    and (method == "FireServer" or method == "InvokeServer")
+        and CurrentTargetPos
+        and not checkcaller()
+        and (method == "FireServer" or method == "InvokeServer")
     then
-
         local name = tostring(self.Name):lower()
-
-        if not string.find(name,"skill")
-        and not string.find(name,"ability")
-        and not string.find(name,"combo")
-        and not string.find(name,"dash")
+        if not name:find("skill")
+            and not name:find("ability")
+            and not name:find("combo")
+            and not name:find("dash")
         then
-
-            for i,v in ipairs(args) do
+            for i, v in ipairs(args) do
                 if typeof(v) == "Vector3" and i <= 2 then
                     args[i] = CurrentTargetPos
                     return oldNamecall(self, unpack(args))
@@ -223,52 +273,61 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             end
         end
     end
-
     return oldNamecall(self, ...)
 end)
 
 -- =========================
--- STABLE HITBOX (SAFE)
+-- تنضيف عند مغادرة اللاعب
 -- =========================
-task.spawn(function()
-
-    while task.wait(0.7) do
-
-        if getgenv().AimbotActive
-        and CurrentTarget
-        and CurrentTarget.Character
-        then
-
-            local root = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-            local hum = CurrentTarget.Character:FindFirstChildOfClass("Humanoid")
-
-            if root and hum and hum.Health > 0 then
-
-                pcall(function()
-
-                    root.Size = Vector3.new(
-                        Config.HitboxSize,
-                        Config.HitboxSize,
-                        Config.HitboxSize
-                    )
-
-                    root.CanCollide = false
-                    root.Transparency = 1
-
-                end)
-            end
-        end
+Players.PlayerRemoving:Connect(function(plr)
+    ResetHitbox(plr)
+    if CurrentTarget == plr then
+        CurrentTarget = nil
+        CurrentTargetPos = nil
+        lastTarget = nil
     end
 end)
+
+-- =========================
+-- تنضيف عند موت الهدف
+-- =========================
+local function onCharacterAdded(plr, char)
+    char:WaitForChild("Humanoid").Died:Connect(function()
+        if CurrentTarget == plr then
+            CurrentTarget = nil
+            CurrentTargetPos = nil
+            ResetHitbox(plr)
+            lastTarget = nil
+        end
+    end)
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr.Character then
+        onCharacterAdded(plr, plr.Character)
+    end
+    plr.CharacterAdded:Connect(function(char)
+        onCharacterAdded(plr, char)
+    end)
+end
 
 -- =========================
 -- API
 -- =========================
 function AimbotModule:SetState(state)
     getgenv().AimbotActive = state
+    if not state then
+        CurrentTarget = nil
+        CurrentTargetPos = nil
+        if lastTarget then
+            ResetHitbox(lastTarget)
+            lastTarget = nil
+        end
+        Line.Visible = false
+    end
 end
 
-print("[ARAKS HUB] AIMBOT FULL LOADED (CLEAN VERSION)")
+print("[ARAKS HUB] AIMBOT FULL FIXED - COMBO READY | Hitbox 30 ثابت | بدون ضياع ضربات")
 
 end
 
