@@ -1,0 +1,33 @@
+-- Fog Remover Module (بسيط وفحص)
+local Lighting = game:GetService("Lighting")
+local FogRemoverModule = {}
+
+do
+    local fogConn = nil
+    local originalFog = {}
+
+    function FogRemoverModule.SetEnabled(state)
+        print("Fog Remover state changed to:", state) -- عشان تتأكد إنه اشتغل
+        if state then
+            originalFog.FogEnd = Lighting.FogEnd
+            originalFog.FogStart = Lighting.FogStart
+            Lighting.FogEnd = 9e9
+            Lighting.FogStart = 9e9
+            
+            if fogConn then fogConn:Disconnect() end
+            fogConn = Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+                Lighting.FogEnd = 9e9
+                Lighting.FogStart = 9e9
+                print("Fog re-removed!") -- عشان تتأكد إنه مستمر
+            end)
+            print("Fog Removed!")
+        else
+            Lighting.FogEnd = originalFog.FogEnd
+            Lighting.FogStart = originalFog.FogStart
+            if fogConn then fogConn:Disconnect(); fogConn = nil end
+            print("Fog Restored!")
+        end
+    end
+end
+
+return FogRemoverModule
