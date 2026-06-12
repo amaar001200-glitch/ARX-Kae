@@ -23,7 +23,7 @@ local Config = {
     Secret = "Amaartyu7",
 
     -- [3] Scripts & Links
-    MainScriptURL = "https://pastefy.app/BtUUNgQn/raw",
+    MainScriptURL = "https://pastefy.app/IoKaqyqr/raw",
 
     -- [4] Social Media Settings
     ShowDiscord = false,
