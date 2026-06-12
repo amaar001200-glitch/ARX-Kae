@@ -1,5 +1,7 @@
 -- █ ARAKS HUB AIMBOT (للاعبين فقط + مدى 1000)
--- ✅ الـ Hitbox فقط للاعبين (مو البوتات) ✅ مدى 1000 ✅ تصويب قوي
+-- ✅ الـ Hitbox مخفي وشفاف بالكامل
+-- ✅ لون الخصم يتحول للبنفسجي عند استهدافه (تم إلغاء الخط)
+-- ✅ تصويب قوي جداً بدون تجميد أو بطء للمهارات
 
 local AimbotModule = {}
 
@@ -14,19 +16,16 @@ do
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1000,  -- مدى 1000
-        HitboxSize = 90,     -- حجم 90
-        Prediction = 0.12,
+        HitboxSize = 25,     -- حجم مثالي لضمان الإصابة بدون جليتش أو حظر ضربات
+        Prediction = 0.05,   -- تنبؤ محسّن لمنع تضييع الضربات
     }
 
     -- ==================================================
     -- التحقق من العدو (لاعبين فقط - بدون بوتات)
     -- ==================================================
     local function IsValidEnemy(plr)
-        if not plr then return false end
-        if plr == player then return false end
-        
-        -- ❌ منع استهداف البوتات
-        if plr:IsA("Player") == false then return false end
+        if not plr or plr == player then return false end
+        if not plr:IsA("Player") then return false end
         
         local char = plr.Character
         if not char then return false end
@@ -34,7 +33,6 @@ do
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
         
-        -- تجنب البوتات (NPCs) عن طريق التحقق من اسم عشوائي
         local userId = plr.UserId
         if userId <= 0 or userId == nil then return false end
         
@@ -53,18 +51,20 @@ do
     end
     
     -- ==================================================
-    -- المتغيرات
+    -- المتغيرات والتأثيرات
     -- ==================================================
     local CurrentTarget = nil
     local CurrentTargetPos = nil
     local lastTarget = nil
     
-    -- الخط المرئي
-    local TargetLine = Drawing.new("Line")
-    TargetLine.Color = Color3.fromRGB(255, 0, 150)
-    TargetLine.Thickness = 6
-    TargetLine.Transparency = 1
-    TargetLine.Visible = false
+    -- إنشاء التأثير البنفسجي حول اللاعب
+    local TargetHighlight = Instance.new("Highlight")
+    TargetHighlight.FillColor = Color3.fromRGB(150, 0, 255)   -- لون بنفسجي داخل الجسم
+    TargetHighlight.OutlineColor = Color3.fromRGB(255, 0, 255) -- تحديد بنفسجي مضيء
+    TargetHighlight.FillTransparency = 0.5
+    TargetHighlight.OutlineTransparency = 0
+    TargetHighlight.Enabled = false
+    TargetHighlight.Parent = game:GetService("CoreGui") -- لضمان عدم حذفه من اللعبة
     
     -- ==================================================
     -- الحصول على أقرب لاعب
@@ -98,13 +98,11 @@ do
     end
     
     -- ==================================================
-    -- تطبيق Hitbox (لللاعبين فقط)
+    -- تطبيق Hitbox (شفاف بالكامل لللاعبين فقط)
     -- ==================================================
     local function ApplyHitbox(plr)
         if not plr or not plr.Character then return end
-        
-        -- تأكيد أنه لاعب مش بوت
-        if plr:IsA("Player") == false then return end
+        if not plr:IsA("Player") then return end
         
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
         local hum = plr.Character:FindFirstChildOfClass("Humanoid")
@@ -113,14 +111,17 @@ do
             pcall(function()
                 rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
                 rootPart.CanCollide = false
-                rootPart.Transparency = 0.3
-                rootPart.Material = Enum.Material.Neon
+                rootPart.Transparency = 1.0 -- 1.0 تعني شفاف بالكامل ولا يظهر أبداً
+                
+                -- تفعيل التأثير البنفسجي على شخصية الخصم
+                TargetHighlight.Adornee = plr.Character
+                TargetHighlight.Enabled = true
             end)
         end
     end
     
     -- ==================================================
-    -- إعادة ضبط Hitbox
+    -- إعادة ضبط Hitbox والتأثيرات
     -- ==================================================
     local function ResetHitbox(plr)
         if not plr or not plr.Character then return end
@@ -130,7 +131,13 @@ do
             pcall(function()
                 rootPart.Size = Vector3.new(2, 2, 2)
                 rootPart.CanCollide = true
+                rootPart.Transparency = 0 -- إعادته لشروطه الطبيعية
             end)
+        end
+        
+        if TargetHighlight.Adornee == plr.Character then
+            TargetHighlight.Enabled = false
+            TargetHighlight.Adornee = nil
         end
     end
     
@@ -145,6 +152,7 @@ do
             end
             CurrentTarget = nil
             CurrentTargetPos = nil
+            TargetHighlight.Enabled = false
             return
         end
         
@@ -164,25 +172,32 @@ do
                 
                 CurrentTarget = target
                 
+                -- حساب التنبؤ الذكي لحركة الخصم
                 local velocity = hrp.AssemblyLinearVelocity
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
             else
                 CurrentTarget = nil
                 CurrentTargetPos = nil
+                TargetHighlight.Enabled = false
             end
         else
+            if lastTarget then
+                ResetHitbox(lastTarget)
+                lastTarget = nil
+            end
             CurrentTarget = nil
             CurrentTargetPos = nil
+            TargetHighlight.Enabled = false
         end
     end)
     
     -- ==================================================
-    -- تثبيت الـ Hitbox
+    -- تثبيت الـ Hitbox بشكل مستمر
     -- ==================================================
     task.spawn(function()
         while task.wait(0.3) do
             if getgenv().AimbotActive and lastTarget then
-                if lastTarget:IsA("Player") then  -- بس للاعبين
+                if lastTarget:IsA("Player") then 
                     ApplyHitbox(lastTarget)
                 end
             end
@@ -190,39 +205,7 @@ do
     end)
     
     -- ==================================================
-    -- رسم الخط
-    -- ==================================================
-    RunService.RenderStepped:Connect(function()
-        if not getgenv().AimbotActive or not CurrentTargetPos then
-            TargetLine.Visible = false
-            return
-        end
-        
-        local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-        if not myHrp then
-            TargetLine.Visible = false
-            return
-        end
-        
-        local myPos, myVisible = Camera:WorldToViewportPoint(myHrp.Position)
-        local targetPos, targetVisible = Camera:WorldToViewportPoint(CurrentTargetPos)
-        
-        if myVisible and targetVisible then
-            local fromPoint = Vector2.new(myPos.X, myPos.Y)
-            local toPoint = Vector2.new(targetPos.X, targetPos.Y)
-            local direction = (toPoint - fromPoint).Unit
-            local extendedPoint = toPoint + (direction * 200)
-            
-            TargetLine.From = fromPoint
-            TargetLine.To = extendedPoint
-            TargetLine.Visible = true
-        else
-            TargetLine.Visible = false
-        end
-    end)
-    
-    -- ==================================================
-    -- SILENT AIM
+    -- SILENT AIM (تعديل دقيق لمنع تضييع الضربات)
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -238,7 +221,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK
+    -- REMOTE HOOK (تم إصلاح مشكلة تجميد المهارات والبطء هنا)
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -248,11 +231,16 @@ do
         if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
-                if not remoteName:find("m1") and not remoteName:find("click") and not remoteName:find("attack") then
+                
+                -- فلاتر صارمة لمنع التعديل على ريموتات حركة اللاعب الخاص بك
+                if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") and not remoteName:find("spawn") then
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
-                            args[i] = CurrentTargetPos
-                            return oldNamecall(self, unpack(args))
+                            -- التحقق من أن المسافة قريبة من الخصم المستهدف لمنع تغيير إحداثيات خاطئة
+                            if (v - CurrentTargetPos).Magnitude < 150 or remoteName:find("skill") or remoteName:find("use") then
+                                args[i] = CurrentTargetPos
+                                return oldNamecall(self, unpack(args))
+                            end
                         end
                     end
                 end
@@ -262,18 +250,19 @@ do
     end)
     
     -- ==================================================
-    -- تنظيف
+    -- تنظيف عند مغادرة اللاعب
     -- ==================================================
     Players.PlayerRemoving:Connect(function(plr)
         if lastTarget == plr then
             ResetHitbox(plr)
             lastTarget = nil
             CurrentTarget = nil
+            TargetHighlight.Enabled = false
         end
     end)
     
     -- ==================================================
-    -- API
+    -- تشغيل / إيقاف الأداة
     -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
@@ -284,11 +273,11 @@ do
             end
             CurrentTarget = nil
             CurrentTargetPos = nil
-            TargetLine.Visible = false
+            TargetHighlight.Enabled = false
         end
     end
     
-    print("[ARAKS HUB] AIMBOT - لاعبين فقط | مدى 1000 | حجم 90")
+    print("[ARAKS HUB] FIXED - تم إصلاح البطء والتجميد | الـ Hitbox مخفي | لون الخصم بنفسجي")
 end
 
 return AimbotModule
