@@ -1,5 +1,5 @@
--- █ ARAKS HUB AIMBOT (ULTIMATE FIXED) - بدون تجميد | Hitbox 90 | تصويب قوي
--- تم إصلاح مشكلة التجميد نهائياً
+-- █ ARAKS HUB AIMBOT (للاعبين فقط + مدى 1000)
+-- ✅ الـ Hitbox فقط للاعبين (مو البوتات) ✅ مدى 1000 ✅ تصويب قوي
 
 local AimbotModule = {}
 
@@ -8,24 +8,25 @@ do
     local player = Players.LocalPlayer
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
     getgenv().AimbotActive = false
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
-        MaxDistance = 1500,
-        SwordRange = 1000,
-        Prediction = 0.12,  -- تصويب سريع ودقيق
-        HitboxSize = 90,    -- حجم ضخم جداً
+        MaxDistance = 1000,  -- مدى 1000
+        HitboxSize = 90,     -- حجم 90
+        Prediction = 0.12,
     }
 
     -- ==================================================
-    -- التحقق من العدو (معدل)
+    -- التحقق من العدو (لاعبين فقط - بدون بوتات)
     -- ==================================================
     local function IsValidEnemy(plr)
         if not plr then return false end
         if plr == player then return false end
+        
+        -- ❌ منع استهداف البوتات
+        if plr:IsA("Player") == false then return false end
         
         local char = plr.Character
         if not char then return false end
@@ -33,15 +34,17 @@ do
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
         
+        -- تجنب البوتات (NPCs) عن طريق التحقق من اسم عشوائي
+        local userId = plr.UserId
+        if userId <= 0 or userId == nil then return false end
+        
         local myTeam = player.Team
         local targetTeam = plr.Team
         
-        -- القراصنة يستهدفون الكل
         if myTeam and myTeam.Name == "Pirates" then
             return true
         end
         
-        -- البحرية تستهدف القراصنة فقط
         if myTeam and myTeam.Name == "Marines" then
             return targetTeam and targetTeam.Name == "Pirates"
         end
@@ -54,17 +57,17 @@ do
     -- ==================================================
     local CurrentTarget = nil
     local CurrentTargetPos = nil
-    local CurrentVelocity = nil
+    local lastTarget = nil
     
     -- الخط المرئي
     local TargetLine = Drawing.new("Line")
     TargetLine.Color = Color3.fromRGB(255, 0, 150)
-    TargetLine.Thickness = 5      -- أعرض
+    TargetLine.Thickness = 6
     TargetLine.Transparency = 1
     TargetLine.Visible = false
     
     -- ==================================================
-    -- الحصول على أقرب عدو (محسن جداً)
+    -- الحصول على أقرب لاعب
     -- ==================================================
     local function GetNearestEnemy()
         local char = player.Character
@@ -95,20 +98,22 @@ do
     end
     
     -- ==================================================
-    -- 🔥 تطبيق Hitbox ضخم (على الهدف الحالي فقط)
+    -- تطبيق Hitbox (لللاعبين فقط)
     -- ==================================================
     local function ApplyHitbox(plr)
         if not plr or not plr.Character then return end
+        
+        -- تأكيد أنه لاعب مش بوت
+        if plr:IsA("Player") == false then return end
         
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
         local hum = plr.Character:FindFirstChildOfClass("Humanoid")
         
         if rootPart and hum and hum.Health > 0 then
             pcall(function()
-                -- حجم 90 ضخم جداً
                 rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
                 rootPart.CanCollide = false
-                rootPart.Transparency = 0.5  -- ظاهر (مش مخفي)
+                rootPart.Transparency = 0.3
                 rootPart.Material = Enum.Material.Neon
             end)
         end
@@ -130,10 +135,8 @@ do
     end
     
     -- ==================================================
-    -- 🔥 AIMBOT UPDATE (بسرعة عالية بدون تجميد)
+    -- AIMBOT UPDATE
     -- ==================================================
-    local lastTarget = nil
-    
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
             if lastTarget then
@@ -151,7 +154,6 @@ do
             local hrp = target.Character:FindFirstChild(AimbotConfig.TargetPart)
             
             if hrp then
-                -- تغيير الهدف
                 if target ~= lastTarget then
                     if lastTarget then
                         ResetHitbox(lastTarget)
@@ -162,9 +164,7 @@ do
                 
                 CurrentTarget = target
                 
-                -- حساب الـ Prediction للحركة
                 local velocity = hrp.AssemblyLinearVelocity
-                CurrentVelocity = velocity
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
             else
                 CurrentTarget = nil
@@ -177,18 +177,20 @@ do
     end)
     
     -- ==================================================
-    -- 🔥 HITBOX FORCE (يثبت الحجم كل 0.3 ثانية فقط - خفيف)
+    -- تثبيت الـ Hitbox
     -- ==================================================
     task.spawn(function()
-        while task.wait(0.3) do  -- ليس كل إطار، هذا يمنع التجميد
+        while task.wait(0.3) do
             if getgenv().AimbotActive and lastTarget then
-                ApplyHitbox(lastTarget)
+                if lastTarget:IsA("Player") then  -- بس للاعبين
+                    ApplyHitbox(lastTarget)
+                end
             end
         end
     end)
     
     -- ==================================================
-    -- رسم الخط (محسن)
+    -- رسم الخط
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive or not CurrentTargetPos then
@@ -206,7 +208,6 @@ do
         local targetPos, targetVisible = Camera:WorldToViewportPoint(CurrentTargetPos)
         
         if myVisible and targetVisible then
-            -- تمديد الخط
             local fromPoint = Vector2.new(myPos.X, myPos.Y)
             local toPoint = Vector2.new(targetPos.X, targetPos.Y)
             local direction = (toPoint - fromPoint).Unit
@@ -221,7 +222,7 @@ do
     end)
     
     -- ==================================================
-    -- 🔥 SILENT AIM (قوي ومباشر)
+    -- SILENT AIM
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -237,7 +238,7 @@ do
     end)
     
     -- ==================================================
-    -- 🔥 REMOTE HOOK (سريع)
+    -- REMOTE HOOK
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -261,7 +262,7 @@ do
     end)
     
     -- ==================================================
-    -- تنظيف عند مغادرة اللاعب
+    -- تنظيف
     -- ==================================================
     Players.PlayerRemoving:Connect(function(plr)
         if lastTarget == plr then
@@ -287,7 +288,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] AIMBOT ULTIMATE FIXED - حجم 90 | بدون تجميد | تصويب قوي")
+    print("[ARAKS HUB] AIMBOT - لاعبين فقط | مدى 1000 | حجم 90")
 end
 
 return AimbotModule
