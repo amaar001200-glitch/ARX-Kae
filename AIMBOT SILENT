@@ -1,5 +1,5 @@
--- █ ARAKS HUB AIMBOT - ULTIMATE EDITION
--- ✅ Hitbox حجم 50 (ضخم جداً) ✅ ظاهر (مش مخفي) ✅ بدون تجميد المهارات
+-- █ ARAKS HUB AIMBOT - PERFECT AIM EDITION
+-- ✅ تصويب دقيق على الصدر (مش الرجلين) ✅ سرعة مهارات فائقة ✅ Hitbox متوازن
 
 local AimbotModule = {}
 
@@ -9,20 +9,20 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera = workspace.CurrentCamera
-local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
 getgenv().AimbotActive = false
 
 -- =========================
--- CONFIG (حجم ضخم جداً)
+-- CONFIG (معدل للدقة والسرعة)
 -- =========================
 local Config = {
-    TargetPart = "HumanoidRootPart",
+    TargetPart = "UpperTorso",  -- 🔥 نصوب على الصدر (مش الرجلين) عشان السيف المستقيم
     MaxDistance = 1000,
-    Prediction = 0.14,
-    HitboxSize = 50  -- 🔥 حجم ضخم جداً (50x50) مناسب للسيف المستقيم الطويل
+    Prediction = 0.07,  -- 🔥 أسرع بمرتين عشان المهارات تطلع بسرعة
+    HitboxSize = 35,  -- 🔥 35 حجم مثالي (ليس صغيراً ولا يسبب تجميد)
+    AimSmoothing = 0.3  -- 🔥 توجيه سلس عشان الضربة تكون قريبة
 }
 
 -- =========================
@@ -30,7 +30,7 @@ local Config = {
 -- =========================
 local CurrentTarget = nil
 local CurrentTargetPos = nil
-local isUsingSkill = false
+local CurrentTargetCFrame = nil
 
 -- =========================
 -- TEAM CHECK
@@ -45,11 +45,8 @@ local function IsValidEnemy(plr)
     local myTeam = player.Team
     local targetTeam = plr.Team
 
-    if myTeam and myTeam.Name == "Pirates" then
-        return true
-    end
-    if myTeam and myTeam.Name == "Marines" then
-        return targetTeam and targetTeam.Name == "Pirates"
+    if myTeam and (myTeam.Name == "Pirates" or myTeam.Name == "Marines") then
+        return targetTeam and targetTeam.Name ~= myTeam.Name
     end
     return true
 end
@@ -64,16 +61,20 @@ local function GetNearestEnemy()
     if not root then return nil end
 
     local nearest = nil
-    local distLimit = Config.MaxDistance
+    local bestDist = Config.MaxDistance
     local rootPos = root.Position
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if IsValidEnemy(plr) and plr.Character then
-            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local dist = (hrp.Position - rootPos).Magnitude
-                if dist < distLimit then
-                    distLimit = dist
+            -- 🔥 نستخدم UpperTorso للقياس (أقرب للجسم)
+            local targetPart = plr.Character:FindFirstChild(Config.TargetPart)
+            if not targetPart then
+                targetPart = plr.Character:FindFirstChild("HumanoidRootPart")
+            end
+            if targetPart then
+                local dist = (targetPart.Position - rootPos).Magnitude
+                if dist < bestDist then
+                    bestDist = dist
                     nearest = plr
                 end
             end
@@ -83,111 +84,100 @@ local function GetNearestEnemy()
 end
 
 -- =========================
--- 🔥 MASSIVE VISIBLE HITBOX (حجم 50 وظاهر)
+-- 🔥 HITBOX ذكي (يكبر الصدر والرأس فقط عشان الضربة تكون قريبة)
 -- =========================
-local function ApplyMassiveHitbox(plr)
+local function ApplySmartHitbox(plr)
     if not plr or not plr.Character then return end
     
+    local upperTorso = plr.Character:FindFirstChild("UpperTorso")
     local root = plr.Character:FindFirstChild("HumanoidRootPart")
+    local head = plr.Character:FindFirstChild("Head")
     local hum = plr.Character:FindFirstChildOfClass("Humanoid")
     
-    if root and hum and hum.Health > 0 then
-        local newSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
-        
+    if hum and hum.Health > 0 then
         pcall(function()
-            -- 🔥 حجم ضخم 50
-            root.Size = newSize
-            root.CanCollide = false
-            root.Transparency = 0  -- 🔥 ظاهر (مش مخفي)
-            root.Material = Enum.Material.Neon
+            -- 🔥 نكبر الصدر فقط (هنا لازم يصيب السيف)
+            if upperTorso then
+                upperTorso.Size = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+                upperTorso.CanCollide = false
+                upperTorso.Transparency = 0
+            end
             
-            -- 🔥 نكبر كل أجزاء الجسم
-            local allParts = plr.Character:GetChildren()
-            for _, part in ipairs(allParts) do
-                if part:IsA("BasePart") then
-                    part.Size = newSize
-                    part.CanCollide = false
-                    part.Transparency = 0
-                    part.Material = Enum.Material.Neon
-                end
+            -- 🔥 نكبر الرأس كمان
+            if head then
+                head.Size = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+                head.CanCollide = false
+                head.Transparency = 0
+            end
+            
+            -- الرجلين نتركها صغيرة عشان ما يبعد التصويب
+            if root then
+                root.Size = Vector3.new(8, 8, 8)
+                root.CanCollide = false
             end
         end)
     end
 end
 
 -- =========================
--- AIMBOT UPDATE LOOP
+-- 🔥 AIMBOT UPDATE (سريع جداً - 60 مرة في الثانية)
 -- =========================
 RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive then
         CurrentTarget = nil
         CurrentTargetPos = nil
+        CurrentTargetCFrame = nil
         return
     end
 
     local target = GetNearestEnemy()
     
     if target and target.Character then
-        local hrp = target.Character:FindFirstChild(Config.TargetPart)
-        if hrp then
+        -- 🔥 نستهدف الصدر أولاً
+        local targetPart = target.Character:FindFirstChild(Config.TargetPart)
+        if not targetPart then
+            targetPart = target.Character:FindFirstChild("HumanoidRootPart")
+        end
+        
+        if targetPart then
             CurrentTarget = target
-            local velocity = hrp.AssemblyLinearVelocity
-            CurrentTargetPos = hrp.Position + (velocity * Config.Prediction)
             
-            -- 🔥 نطبق الهيت بوكس الضخم كل مره
-            ApplyMassiveHitbox(target)
+            -- 🔥 حساب السرعة للـ Prediction
+            local velocity = targetPart.AssemblyLinearVelocity
+            local predictedPos = targetPart.Position + (velocity * Config.Prediction)
+            
+            -- 🔥 نضيف Aim Smoothing عشان التصويب يكون قريب وسلس
+            if CurrentTargetPos then
+                CurrentTargetPos = CurrentTargetPos:Lerp(predictedPos, Config.AimSmoothing)
+            else
+                CurrentTargetPos = predictedPos
+            end
+            
+            -- 🔥 نصنع CFrame للتصويب الدقيق
+            CurrentTargetCFrame = CFrame.new(CurrentTargetPos)
+            
+            -- 🔥 نطبق الهيت بوكس الذكي
+            ApplySmartHitbox(target)
         else
             CurrentTarget = nil
             CurrentTargetPos = nil
+            CurrentTargetCFrame = nil
         end
     else
         CurrentTarget = nil
         CurrentTargetPos = nil
+        CurrentTargetCFrame = nil
     end
 end)
 
 -- =========================
--- 🔥 HITBOX FORCE LOOP (يثبت الحجم كل 0.05 ثانية - سريع جداً)
--- =========================
-task.spawn(function()
-    while task.wait(0.05) do  -- 20 مرة في الثانية
-        if getgenv().AimbotActive and CurrentTarget then
-            ApplyMassiveHitbox(CurrentTarget)
-        end
-    end
-end)
-
--- =========================
--- 🔥 منع تجميد المهارات (حل مشكلة الضغط على المهارة)
--- =========================
--- نكتشف لما المستخدم يضغط مهارة
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    
-    -- نتحقق إذا كان الضغط على مفتاح مهارة (Z, X, C, V, G, إلخ)
-    local key = input.KeyCode.Name
-    local skillKeys = {"Z", "X", "C", "V", "B", "G", "Q", "E", "R", "T", "F"}
-    
-    for _, skillKey in ipairs(skillKeys) do
-        if key == skillKey then
-            isUsingSkill = true
-            task.wait(0.2)  -- مدة استخدام المهارة
-            isUsingSkill = false
-            break
-        end
-    end
-end)
-
--- =========================
--- VISUAL LINE (أطول وأعرض)
+-- 🔥 VISUAL LINE (مؤشر على الصدر وليس الرجلين)
 -- =========================
 local Line = Drawing.new("Line")
-Line.Color = Color3.fromRGB(180, 0, 255)
-Line.Thickness = 8  -- أعرض
+Line.Color = Color3.fromRGB(255, 50, 100)
+Line.Thickness = 5
 Line.Transparency = 1
 Line.Visible = false
-
-local LineExtension = 300  -- أطول
 
 RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive or not CurrentTargetPos then
@@ -206,13 +196,8 @@ RunService.RenderStepped:Connect(function()
     local b, vb = Camera:WorldToViewportPoint(CurrentTargetPos)
 
     if va and vb then
-        local fromPoint = Vector2.new(a.X, a.Y)
-        local toPoint = Vector2.new(b.X, b.Y)
-        local direction = (toPoint - fromPoint).Unit
-        local extendedPoint = toPoint + (direction * LineExtension)
-        
-        Line.From = fromPoint
-        Line.To = extendedPoint
+        Line.From = Vector2.new(a.X, a.Y)
+        Line.To = Vector2.new(b.X, b.Y)
         Line.Visible = true
     else
         Line.Visible = false
@@ -220,27 +205,23 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================
--- SILENT AIM (مع منع التجميد أثناء المهارات)
+-- 🔥 SILENT AIM (تصويب دقيق على الصدر)
 -- =========================
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, index)
     if index == "Hit"
         and getgenv().AimbotActive
         and not checkcaller()
-        and CurrentTarget
-        and CurrentTarget.Character
-        and not isUsingSkill  -- 🔥 منع التجميد أثناء استخدام المهارة
+        and CurrentTargetCFrame
     then
-        local root = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-        if root then
-            return root.CFrame
-        end
+        -- 🔥 نرجع CFrame الصدر وليس الرجلين
+        return CurrentTargetCFrame
     end
     return oldIndex(self, index)
 end)
 
 -- =========================
--- REMOTE HOOK (معدل لمنع التجميد)
+-- 🔥 REMOTE HOOK (سريع بدون تأخير)
 -- =========================
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -250,7 +231,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     if getgenv().AimbotActive
         and CurrentTargetPos
         and not checkcaller()
-        and not isUsingSkill  -- 🔥 منع التجميد أثناء استخدام المهارة
         and (method == "FireServer" or method == "InvokeServer")
     then
         local name = tostring(self.Name):lower()
@@ -260,7 +240,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             and not name:find("dash")
         then
             for i, v in ipairs(args) do
-                if typeof(v) == "Vector3" and i <= 2 then
+                if typeof(v) == "Vector3" then
                     args[i] = CurrentTargetPos
                     return oldNamecall(self, unpack(args))
                 end
@@ -278,11 +258,12 @@ function AimbotModule:SetState(state)
     if not state then
         CurrentTarget = nil
         CurrentTargetPos = nil
+        CurrentTargetCFrame = nil
         Line.Visible = false
     end
 end
 
-print("[ARAKS HUB] AIMBOT - حجم 50 ظاهر | بدون تجميد المهارات | ضربات دقيقة")
+print("[ARAKS HUB] PERFECT AIM - تصويب على الصدر | سرعة مهارات فائقة | ضربات قريبة")
 
 end
 
