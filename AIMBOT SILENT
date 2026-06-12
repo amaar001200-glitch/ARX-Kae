@@ -1,8 +1,7 @@
--- █ ARAKS HUB AIMBOT (تحديث الـ Hitbox الفعلي للرأس)
--- ✅ تم حذف تكبير الـ HumanoidRootPart نهائياً لمنع جليتش عدم تسجيل الضرر
--- ✅ تم تكبير الـ Head (الرأس) لأنه الـ Hitbox الفعلي والأساسي للضرر
--- ✅ الـ Hitbox مخفي وشفاف تماماً (Transparency = 1)
--- ✅ المدى 1000 متر واللون البنفسجي يعمل بوضوح كامل من أي مسافة
+-- █ ARAKS HUB AIMBOT (تحديث الهيت بوكس الخارجي الشفاف - بدون تجميد الخصوم)
+-- ✅ حل مشكلة تجميد الخصوم الوهمي نهائياً (اللاعبين يتحركون طبيعي الآن)
+-- ✅ يصنع هيت بوكس خارجي شفاف ومتصل بالرأس لتسجيل الضرر الفعلي
+-- ✅ المدى 1000 متر حقيقي مع لون بنفسجي خارق يظهر من خلف الجدران
 
 local AimbotModule = {}
 
@@ -15,10 +14,10 @@ do
     getgenv().AimbotActive = false
 
     local AimbotConfig = {
-        TargetPart = "Head",  -- الاعتماد على الرأس لتسجيل الضرر الفعلي
-        MaxDistance = 1000,   -- مدى 1000 متر حقيقي
-        HitboxSize = 20,      -- الحجم المثالي للرأس لضمان الجلد بدون حجب السيرفر للضرر
-        Prediction = 0.08,    -- تنبؤ متوازن وسريع
+        TargetPart = "Head",
+        MaxDistance = 1000,  -- مدى 1000 متر
+        HitboxSize = 20,     -- حجم الهيت بوكس الخارجي الشفاف
+        Prediction = 0.07,   -- تنبؤ سريع جداً
     }
 
     -- ==================================================
@@ -43,7 +42,6 @@ do
         if myTeam and myTeam.Name == "Pirates" then
             return true
         end
-        
         if myTeam and myTeam.Name == "Marines" then
             return targetTeam and targetTeam.Name == "Pirates"
         end
@@ -59,8 +57,8 @@ do
     local lastTarget = nil
     
     local PurpleChams = Instance.new("BoxHandleAdornment")
-    PurpleChams.Size = Vector3.new(4, 6, 4) -- يغطي حجم الخصم بالكامل
-    PurpleChams.Color3 = Color3.fromRGB(160, 32, 240) -- بنفسجي نيون
+    PurpleChams.Size = Vector3.new(4, 6, 4)
+    PurpleChams.Color3 = Color3.fromRGB(160, 32, 240) -- بنفسجي
     PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
     PurpleChams.Transparency = 0.4
@@ -99,47 +97,64 @@ do
     end
     
     -- ==================================================
-    -- تطبيق الـ Hitbox الفعلي (تكبير الرأس وتصفيره مرئياً)
+    -- تطبيق الهيت بوكس الخارجي (بدون التعديل على العظام الأصلية)
     -- ==================================================
     local function ApplyHitbox(plr)
         if not plr or not plr.Character then return end
-        if not plr:IsA("Player") then return end
         
-        local targetPart = plr.Character:FindFirstChild(AimbotConfig.TargetPart) -- الرأس
+        local head = plr.Character:FindFirstChild("Head")
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-        local hum = plr.Character:FindFirstChildOfClass("Humanoid")
         
-        if targetPart and hum and hum.Health > 0 then
+        if head and rootPart then
             pcall(function()
-                -- تكبير الرأس وهو الـ Hitbox الفعلي للضرر
-                targetPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                targetPart.CanCollide = false
-                targetPart.Transparency = 1.0 -- شفاف تماماً ومخفي 100%
-                
-                -- تشغيل التلوين البنفسجي على الخصم من أي مسافة
-                if rootPart then
-                    PurpleChams.Adornee = rootPart
-                    PurpleChams.Visible = true
+                -- البحث عن الهيت بوكس الخارجي الصانع مسبقاً أو إنشاء واحد جديد
+                local extHitbox = head:FindFirstChild("AraksHitbox")
+                if not extHitbox then
+                    extHitbox = Instance.new("Part")
+                    extHitbox.Name = "AraksHitbox"
+                    extHitbox.Shape = Enum.PartType.Ball -- دائري لضمان جلب الضربات من كل الجهات
+                    extHitbox.CanCollide = false
+                    extHitbox.Anchored = false
+                    extHitbox.Transparency = 1.0 -- شفاف تماماً 100% ومخفي
+                    extHitbox.Massless = true
+                    
+                    -- ربطه بالرأس بشكل فيزيائي دقيق عشان يتحرك مع حركة اللاعب بدون أي تجميد
+                    local weld = Instance.new("Weld")
+                    weld.Name = "AraksWeld"
+                    weld.Part0 = head
+                    weld.Part1 = extHitbox
+                    weld.C0 = CFrame.new(0, 0, 0)
+                    weld.Parent = extHitbox
+                    
+                    extHitbox.Parent = head
                 end
+                
+                -- ضبط الحجم المطلوب للهيت بوكس الخارجي الشفاف لجلد السيرفر
+                extHitbox.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                
+                -- تشغيل التلوين البنفسجي على الخصم
+                PurpleChams.Adornee = rootPart
+                PurpleChams.Visible = true
             end)
         end
     end
     
     -- ==================================================
-    -- إعادة ضبط الـ Hitbox الفعلي والتأثيرات
+    -- إعادة ضبط الهيت بوكس الخارجي والتأثيرات
     -- ==================================================
     local function ResetHitbox(plr)
         if not plr or not plr.Character then return end
         
-        local targetPart = plr.Character:FindFirstChild(AimbotConfig.TargetPart)
+        local head = plr.Character:FindFirstChild("Head")
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
         
-        if targetPart then
-            pcall(function()
-                targetPart.Size = Vector3.new(2, 1, 1) -- الحجم الطبيعي للرأس في روبلوكس
-                targetPart.CanCollide = true
-                targetPart.Transparency = 0
-            end)
+        if head then
+            local extHitbox = head:FindFirstChild("AraksHitbox")
+            if extHitbox then
+                pcall(function()
+                    extHitbox.Size = Vector3.new(1, 1, 1) -- تصغيره للحجم الطبيعي عند إلغاء الهدف
+                end)
+            end
         end
         
         if rootPart and PurpleChams.Adornee == rootPart then
@@ -166,9 +181,9 @@ do
         local target = GetNearestEnemy()
         
         if target and target.Character then
-            local targetPart = target.Character:FindFirstChild(AimbotConfig.TargetPart)
+            local head = target.Character:FindFirstChild(AimbotConfig.TargetPart)
             
-            if targetPart then
+            if head then
                 if target ~= lastTarget then
                     if lastTarget then
                         ResetHitbox(lastTarget)
@@ -179,9 +194,9 @@ do
                 
                 CurrentTarget = target
                 
-                -- التنبؤ بحركة الرأس للمسافات البعيدة
-                local velocity = targetPart.AssemblyLinearVelocity
-                CurrentTargetPos = targetPart.Position + (velocity * AimbotConfig.Prediction)
+                -- التنبؤ بالحركة الذكي بالاعتماد على سرعة الرأس الفعلي
+                local velocity = head.AssemblyLinearVelocity
+                CurrentTargetPos = head.Position + (velocity * AimbotConfig.Prediction)
             else
                 CurrentTarget = nil
                 CurrentTargetPos = nil
@@ -199,10 +214,10 @@ do
     end)
     
     -- ==================================================
-    -- تثبيت مستمر للـ Hitbox الجديد والتلوين البنفسجي
+    -- تثبيت مستمر بدون التسبب بأي تجميد للاعبين
     -- ==================================================
     task.spawn(function()
-        while task.wait(0.2) do
+        while task.wait(0.3) do
             if getgenv().AimbotActive and lastTarget then
                 if lastTarget:IsA("Player") then 
                     ApplyHitbox(lastTarget)
@@ -212,15 +227,15 @@ do
     end)
     
     -- ==================================================
-    -- SILENT AIM (توجيه الضربات المباشر للرأس المكبّر)
+    -- SILENT AIM
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
             if CurrentTarget and CurrentTarget.Character then
-                local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-                if targetPart then
-                    return targetPart.CFrame
+                local head = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
+                if head then
+                    return head.CFrame
                 end
             end
         end
@@ -228,7 +243,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK (توجيه ريموتات المهارات دون أي تجميد أو بطء للاعب)
+    -- REMOTE HOOK
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -280,7 +295,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] HEAD HITBOX FIXED - تم تعديل الهيت بوكس الفعلي للرأس بنجاح وجعله شفافاً!")
+    print("[ARAKS HUB] FIXED 100% - اللاعبين يتحركون بشكل طبيعي والهيت بوكس مخفي وتلقائي!")
 end
 
 return AimbotModule
