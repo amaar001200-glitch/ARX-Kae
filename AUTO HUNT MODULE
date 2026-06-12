@@ -1,5 +1,5 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM + SKILLS)
--- version 1.4 (Fixed: Fly system only works when module is enabled)
+-- version 1.4 (Modified: Pirates target everyone + Marines target Pirates only + Fly system fixed)
 
 local AutoHuntModule = {}
 
@@ -23,7 +23,8 @@ do
     local SkillBusy = false
     
     -- ==================================================
-    -- نظام تجنب الأصدقاء والتحالفات
+    -- نظام تجنب الأصدقاء والتحالفات (معدل)
+    -- القراصنة يستهدفون الكل، البحرية تستهدف القراصنة فقط
     -- ==================================================
     
     local function IsValidEnemy(plr)
@@ -33,11 +34,6 @@ do
         
         -- لا تستهدف نفسك
         if plr == LocalPlayer then
-            return false
-        end
-        
-        -- نفس الفريق = صديق -> يتجنبه
-        if plr.Team == LocalPlayer.Team then
             return false
         end
         
@@ -52,11 +48,35 @@ do
             return false
         end
         
+        -- ==================================================
+        -- نظام الفريق المعدل:
+        -- القراصنة (Pirates) يستهدفون الكل (بحرية + قراصنة)
+        -- البحرية (Marines) تستهدف القراصنة فقط
+        -- ==================================================
+        
+        local myTeam = LocalPlayer.Team
+        local targetTeam = plr.Team
+        
+        -- إذا كان اللاعب قرصان -> يستهدف الكل (أي فريق)
+        if myTeam and myTeam.Name == "Pirates" then
+            return true
+        end
+        
+        -- إذا كان اللاعب بحري -> يستهدف القراصنة فقط
+        if myTeam and myTeam.Name == "Marines" then
+            if targetTeam and targetTeam.Name == "Pirates" then
+                return true
+            else
+                return false
+            end
+        end
+        
+        -- في حال عدم وجود فريق (حماية) -> يستهدف الكل
         return true
     end
     
     -- ==================================================
-    -- نظام الطيران عند انخفاض الدم (يشتغل فقط لما الموديل شغال)
+    -- نظام الطيران عند انخفاض الدم (معدل - يمنع التعليق)
     -- ==================================================
     
     local LOW_HEALTH_FLY = 5000
@@ -252,7 +272,7 @@ do
     end
     
     -- ==================================================
-    -- نظام مراقبة الدم والطيران (يشتغل فقط لما الموديل شغال)
+    -- نظام مراقبة الدم والطيران (معدل - يمنع التعليق)
     -- ==================================================
     task.spawn(function()
         while true do
@@ -266,6 +286,10 @@ do
                     local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     if myHrp then
                         SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+                        -- تأكد إنه ينزل من السماء
+                        task.wait(0.5)
+                        myHrp.Velocity = Vector3.zero
+                        myHrp.RotVelocity = Vector3.zero
                     end
                 end
                 continue
@@ -285,12 +309,20 @@ do
             if FlyMode and myHealth >= SAFE_HEALTH_RETURN then
                 FlyMode = false
                 ReturnToGround(SavedTarget)
+                -- تأكد إنه نزل تماماً
+                task.wait(0.3)
+                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if myHrp then
+                    myHrp.Velocity = Vector3.zero
+                    myHrp.RotVelocity = Vector3.zero
+                end
             end
             
-            -- تثبيت في السماء
+            -- تثبيت في السماء ومنع السقوط
             if FlyMode then
                 local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if myHrp and FlyPosition then
+                    -- يثبت اللاعب في مكانه بالسماء
                     myHrp.CFrame = CFrame.new(FlyPosition)
                     myHrp.Velocity = Vector3.zero
                     myHrp.RotVelocity = Vector3.zero
@@ -377,7 +409,7 @@ do
         Enabled = state
         if state then
             KillNearest = false
-            FlyMode = false  -- لما تشغل الموديل، يتأكد انه نازل من السماء
+            FlyMode = false
             SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
         end
         if not state then
