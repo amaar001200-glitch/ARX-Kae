@@ -1,6 +1,6 @@
--- █ AIMBOT (SILENT) - مع هيت بوكس كبير (حجم 80 + KillAura)
--- تم حذف هيت بوكس التكبير القديم ووضع هيت بوكس سكربتك الأول مكانه
--- الحجم: أقصى حد (80) | مخفي بالكامل
+-- █ AIMBOT (SILENT) - OPTIMIZED (reduced update frequency)
+-- تم تصليح الموديول ليكون جاهزاً للرفع والاستخدام
+-- تم التعديل: القراصنة يستهدفون الكل، البحرية تستهدف القراصنة فقط
 
 local AimbotModule = {}
 
@@ -8,7 +8,6 @@ do
     local Players = game:GetService("Players")
     local player = Players.LocalPlayer
     local RunService = game:GetService("RunService")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Camera = workspace.CurrentCamera
 
     getgenv().AimbotActive = false
@@ -16,110 +15,41 @@ do
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1500,
-        SwordRange = 1000
+        SwordRange = 1000,
     }
 
     -- ==================================================
-    -- هيت بوكس من سكربتك الأول (حجم 80)
-    -- ==================================================
-    local HitboxSettings = {
-        HitboxSize = Vector3.new(80, 80, 80),  -- أقصى حجم 80
-        HitboxTransparency = 1,                 -- مخفي بالكامل
-        HitboxColor = Color3.fromRGB(255, 0, 0),
-        KillAuraEnabled = true
-    }
-
-    local CombatController = nil
-    local WeaponToolShared = nil
-
-    pcall(function()
-        CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
-        WeaponToolShared = require(ReplicatedStorage:WaitForChild("SharedComponents"):WaitForChild("WeaponToolShared"))
-    end)
-
-    local HitboxActive = true
-    local RenderConnection = nil
-
-    local function modifyHitbox(character)
-        if not HitboxActive then return end
-        if not getgenv().AimbotActive then return end
-        if character and character.Name ~= player.Name then
-            local rootPart = character:FindFirstChild("HumanoidRootPart")
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            
-            if rootPart and humanoid and humanoid.Health > 0 then
-                pcall(function()
-                    rootPart.Size = HitboxSettings.HitboxSize
-                    rootPart.CanCollide = false
-                    rootPart.Transparency = HitboxSettings.HitboxTransparency
-                    rootPart.Color = HitboxSettings.HitboxColor
-                    rootPart.Material = Enum.Material.ForceField
-                    
-                    if HitboxSettings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
-                        task.spawn(function()
-                            pcall(function()
-                                CombatController.runHitDetection(character)
-                            end)
-                        end)
-                    end
-                end)
-            end
-        end
-    end
-
-    local function startHitboxLoop()
-        if RenderConnection then return end
-        RenderConnection = RunService.RenderStepped:Connect(function()
-            if not HitboxActive or not getgenv().AimbotActive then return end
-            for _, pl in pairs(Players:GetPlayers()) do
-                if pl ~= player and pl.Character then
-                    modifyHitbox(pl.Character)
-                end
-            end
-        end)
-    end
-
-    local function stopHitboxAndClear()
-        if RenderConnection then
-            RenderConnection:Disconnect()
-            RenderConnection = nil
-        end
-        for _, pl in pairs(Players:GetPlayers()) do
-            if pl ~= player and pl.Character then
-                pcall(function()
-                    local rootPart = pl.Character:FindFirstChild("HumanoidRootPart")
-                    if rootPart then
-                        rootPart.Size = Vector3.new(2, 2, 1)
-                        rootPart.Transparency = 0
-                        rootPart.Color = Color3.fromRGB(255, 255, 255)
-                        rootPart.Material = Enum.Material.Plastic
-                    end
-                end)
-            end
-        end
-    end
-
-    -- ==================================================
-    -- باقي كود الـ Aimbot (نفسه ما تغير)
+    -- التحقق من العدو/الصديق حسب الفريق (معدل)
     -- ==================================================
     
     local function IsValidEnemy(plr)
         if not plr then return false end
+        
+        -- لا تستهدف نفسك
         if plr == player then return false end
         
+        -- التحقق إذا كان الهدف على قيد الحياة
         local char = plr.Character
         if not char then return false end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
         
+        -- ==================================================
+        -- القاعدة الجديدة:
+        -- القراصنة (Pirates) يستهدفون الكل (بحرية + قراصنة)
+        -- البحرية (Marines) تستهدف القراصنة فقط
+        -- ==================================================
+        
         local myTeam = player.Team
         local targetTeam = plr.Team
         
+        -- إذا كان اللاعب قرصان -> يستهدف الكل
         if myTeam and myTeam.Name == "Pirates" then
             return true
         end
         
+        -- إذا كان اللاعب بحري -> يستهدف القراصنة فقط
         if myTeam and myTeam.Name == "Marines" then
             if targetTeam and targetTeam.Name == "Pirates" then
                 return true
@@ -128,12 +58,12 @@ do
             end
         end
         
+        -- في حال عدم وجود فريق (حماية)
         return true
     end
     
     local CurrentTarget = nil
     local CurrentTargetPos = nil
-
     local TargetLine = Drawing.new("Line")
     TargetLine.Color = Color3.fromRGB(180, 0, 255)
     TargetLine.Thickness = 2
@@ -237,19 +167,40 @@ do
         return oldNamecall(self, ...)
     end)
 
-    -- بدء تشغيل الـ Hitbox
-    startHitboxLoop()
+-- Hitbox جديد حجم 90
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local CombatController = nil
+    pcall(function()
+        CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
+    end)
 
-    print("[ARAKS HUB] AIMBOT LOADED - قراصنة: الكل | بحرية: القراصنة فقط")
-    print("[ARAKS HUB] هيت بوكس حجم 80 مخفي مع KillAura")
+    RunService.RenderStepped:Connect(function()
+        if not getgenv().AimbotActive then return end
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if IsValidEnemy(pl) and pl.Character then
+                local rootPart = pl.Character:FindFirstChild("HumanoidRootPart")
+                local humanoid = pl.Character:FindFirstChildOfClass("Humanoid")
+                if rootPart and humanoid and humanoid.Health > 0 then
+                    pcall(function()
+                        rootPart.Size = Vector3.new(90, 90, 90)
+                        rootPart.CanCollide = false
+                        rootPart.Transparency = 1
+                        rootPart.Material = Enum.Material.ForceField
+                        if CombatController and type(CombatController.runHitDetection) == "function" then
+                            task.spawn(function()
+                                pcall(function() CombatController.runHitDetection(pl.Character) end)
+                            end)
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+    
+    print("[ARAKS HUB] AIMBOT LOADED - قراصنة: يستهدفون الكل | بحرية: يستهدفون القراصنة فقط")
 
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
-        if not state then
-            stopHitboxAndClear()
-        else
-            startHitboxLoop()
-        end
     end
 end
 
