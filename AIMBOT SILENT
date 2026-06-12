@@ -1,5 +1,5 @@
--- █ ARAKS HUB AIMBOT - FULL FIXED VERSION (COMBO READY)
--- ✅ لا ضياع ضربات | ✅ Hitbox ثابت 30 | ✅ بدون تجميد
+-- █ ARAKS HUB AIMBOT - FULL FIXED (HITBOX VISIBLE & LARGE)
+-- ✅ الـ Hitbox كبير جداً 30x30 ✅ ظاهر ومكشوف ✅ بدون تجميد
 
 local AimbotModule = {}
 
@@ -21,7 +21,7 @@ local Config = {
     TargetPart = "HumanoidRootPart",
     MaxDistance = 1000,
     Prediction = 0.14,
-    HitboxSize = 30  -- حجم ضخم للسيف المستقيم والكومبو السريع
+    HitboxSize = 30  -- ✅ حجم كبير جداً 30x30 (يضمن إصابة السيف المستقيم والسريع)
 }
 
 -- =========================
@@ -82,7 +82,7 @@ local function GetNearestEnemy()
 end
 
 -- =========================
--- MASSIVE HITBOX SYSTEM (ثابت ولا يختفي حتى أثناء الكومبو)
+-- ✅ MASSIVE VISIBLE HITBOX SYSTEM (30x30 - مكشوف وكبير)
 -- =========================
 local EnlargedTargets = {}
 
@@ -96,16 +96,19 @@ local function ApplyMassiveHitbox(plr)
         local newSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
         
         pcall(function()
+            -- ✅ نجعل الـ Hitbox كبير وظاهر (مخفي مشكلة)
             root.Size = newSize
             root.CanCollide = false
-            root.Transparency = 1
+            root.Transparency = 0  -- ✅ ظاهر وليس مخفي (عشان السيف السريع يشوفه)
+            root.Material = Enum.Material.Neon  -- ✅ يلمع عشان يبان أكثر
             
-            -- نكبر كل أجزاء الجسم عشان الضربات ما تضيع
+            -- ✅ نكبر كل أجزاء الجسم عشان السيف السريع ما يخطئ
             local allParts = plr.Character:GetChildren()
             for _, part in ipairs(allParts) do
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                     part.Size = newSize
                     part.CanCollide = false
+                    part.Transparency = 0  -- ✅ ظاهر
                 end
             end
             
@@ -123,6 +126,8 @@ local function ResetHitbox(plr)
             if root then
                 root.Size = Vector3.new(2, 2, 2)
                 root.CanCollide = true
+                root.Transparency = 1  -- ✅ نرجع مخفي
+                root.Material = Enum.Material.Plastic
             end
             
             local allParts = plr.Character:GetChildren()
@@ -130,6 +135,7 @@ local function ResetHitbox(plr)
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                     part.Size = Vector3.new(2, 2, 2)
                     part.CanCollide = true
+                    part.Transparency = 1
                 end
             end
             
@@ -139,7 +145,7 @@ local function ResetHitbox(plr)
 end
 
 -- =========================
--- AIMBOT UPDATE LOOP (بسرعة عالية لمنع ضياع الضربات)
+-- AIMBOT UPDATE LOOP (سريع جداً لمنع ضياع الضربات)
 -- =========================
 RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive then
@@ -152,7 +158,6 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    -- نحدد أقرب هدف
     local target = GetNearestEnemy()
     
     if target and target.Character then
@@ -162,7 +167,7 @@ RunService.RenderStepped:Connect(function()
             local velocity = hrp.AssemblyLinearVelocity
             CurrentTargetPos = hrp.Position + (velocity * Config.Prediction)
             
-            -- نطبق الـ Hitbox الضخم فوراً عند تغيير الهدف
+            -- ✅ نطبق الهيت بوكس الضخم فوراً
             if target ~= lastTarget then
                 if lastTarget then
                     ResetHitbox(lastTarget)
@@ -170,9 +175,9 @@ RunService.RenderStepped:Connect(function()
                 ApplyMassiveHitbox(target)
                 lastTarget = target
             else
-                -- نتأكد أن الـ Hitbox باقي كبير (مهم جداً للكومبو السريع)
+                -- ✅ نتأكد أن الهيت بوكس باقي كبير وظاهر (مهم للسيف السريع)
                 local root = target.Character:FindFirstChild("HumanoidRootPart")
-                if root and root.Size.X < Config.HitboxSize - 5 then
+                if root and (root.Size.X < Config.HitboxSize - 5 or root.Transparency == 1) then
                     ApplyMassiveHitbox(target)
                 end
             end
@@ -187,7 +192,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================
--- VISUAL LINE (أطول وأعرض)
+-- VISUAL LINE
 -- =========================
 local Line = Drawing.new("Line")
 Line.Color = Color3.fromRGB(180, 0, 255)
@@ -228,7 +233,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================
--- SILENT AIM (مصحح للكومبو السريع)
+-- SILENT AIM
 -- =========================
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -247,7 +252,7 @@ oldIndex = hookmetamethod(game, "__index", function(self, index)
 end)
 
 -- =========================
--- REMOTE HOOK (مصحح وسريع)
+-- REMOTE HOOK
 -- =========================
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -277,7 +282,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- =========================
--- تنضيف عند مغادرة اللاعب
+-- تنظيف
 -- =========================
 Players.PlayerRemoving:Connect(function(plr)
     ResetHitbox(plr)
@@ -288,9 +293,6 @@ Players.PlayerRemoving:Connect(function(plr)
     end
 end)
 
--- =========================
--- تنضيف عند موت الهدف
--- =========================
 local function onCharacterAdded(plr, char)
     char:WaitForChild("Humanoid").Died:Connect(function()
         if CurrentTarget == plr then
@@ -327,7 +329,7 @@ function AimbotModule:SetState(state)
     end
 end
 
-print("[ARAKS HUB] AIMBOT FULL FIXED - COMBO READY | Hitbox 30 ثابت | بدون ضياع ضربات")
+print("[ARAKS HUB] AIMBOT - Hitbox 30x30 ظاهر وكبير | السيف السريع سيصيب الآن")
 
 end
 
