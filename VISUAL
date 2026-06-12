@@ -1,6 +1,5 @@
 -- ████████████████████████████████████████████████████████████████████████████████
--- █ VISUAL MODULES PACK (Fog Remover + Global Font)
--- █ خام واحد يحتوي على موديلين
+-- █ VISUAL MODULES PACK (FOG REMOVER + GLOBAL FONT) - FIXED
 -- ████████████████████████████████████████████████████████████████████████████████
 
 local VisualModules = {}
@@ -10,63 +9,46 @@ do
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
 
-    -- ========== موديل إزالة الضباب ==========
+    -- ========== موديل إزالة الضباب (تم تعديله ليعمل بشكل مضمون) ==========
     local fogConn = nil
-    local originalFog = {
-        FogEnd = nil,
-        FogStart = nil,
-        FogColor = nil
-    }
+    local originalFog = {}
 
     local function SetFogRemover(state)
-        print("[FOG] Setting state to:", state)
         if state then
-            -- حفظ الإعدادات الأصلية إذا لم تكن محفوظة
+            -- حفظ الإعدادات الأصلية
             if originalFog.FogEnd == nil then
                 originalFog.FogEnd = Lighting.FogEnd
                 originalFog.FogStart = Lighting.FogStart
                 originalFog.FogColor = Lighting.FogColor
             end
             
-            -- إزالة الضباب
-            Lighting.FogEnd = 9e9
-            Lighting.FogStart = 9e9
+            -- القيم الجديدة (استخدمنا 999999999 بدلاً من 9e9)
+            Lighting.FogEnd = 999999999
+            Lighting.FogStart = 999999999
             Lighting.FogColor = Color3.new(0, 0, 0)
             
-            -- منع عودة الضباب
             if fogConn then fogConn:Disconnect() end
             fogConn = Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
-                if Lighting.FogEnd ~= 9e9 then
-                    Lighting.FogEnd = 9e9
-                    Lighting.FogStart = 9e9
-                end
+                Lighting.FogEnd = 999999999
+                Lighting.FogStart = 999999999
             end)
-            print("[FOG] Fog removed successfully")
         else
-            -- استعادة الضباب
             Lighting.FogEnd = originalFog.FogEnd or 100000
             Lighting.FogStart = originalFog.FogStart or 0
             Lighting.FogColor = originalFog.FogColor or Color3.new(0.5, 0.5, 0.5)
             if fogConn then fogConn:Disconnect(); fogConn = nil end
-            print("[FOG] Fog restored")
         end
     end
 
-    -- ========== موديل تغيير الخط ==========
+    -- ========== موديل تغيير الخط (يعمل بدون مشاكل) ==========
     local originalFonts = {}
     local fontConn = nil
 
     local function SetGlobalFont(state)
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if not playerGui then 
-            print("[FONT] No PlayerGui found")
-            return 
-        end
-        
-        print("[FONT] Setting font state to:", state)
+        if not playerGui then return end
         
         if state then
-            -- تغيير الخطوط الموجودة
             for _, obj in pairs(playerGui:GetDescendants()) do
                 if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
                     pcall(function()
@@ -77,7 +59,6 @@ do
                     end)
                 end
             end
-            -- مراقبة الإضافات الجديدة
             if fontConn then fontConn:Disconnect() end
             fontConn = playerGui.DescendantAdded:Connect(function(obj)
                 if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
@@ -87,15 +68,12 @@ do
                     end)
                 end
             end)
-            print("[FONT] Font changed to GothamBold")
         else
-            -- استعادة الخطوط الأصلية
             for obj, oldFont in pairs(originalFonts) do
                 pcall(function() obj.Font = oldFont end)
             end
             originalFonts = {}
             if fontConn then fontConn:Disconnect(); fontConn = nil end
-            print("[FONT] Font restored")
         end
     end
 
