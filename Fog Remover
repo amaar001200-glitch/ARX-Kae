@@ -1,33 +1,110 @@
--- Fog Remover Module (بسيط وفحص)
+-- ================ RTX GRAPHICS MODE + FOG REMOVER ================
+-- اختر الوضع: "Summer" أو "Autumn" أو "Spring" أو "Winter"
+
+local mode = "Summer"  -- <- غيّر هنا
+
 local Lighting = game:GetService("Lighting")
-local FogRemoverModule = {}
+local Terrain = workspace.Terrain
 
-do
-    local fogConn = nil
-    local originalFog = {}
+-- متغيرات إزالة الضباب
+local fogRemoverEnabled = false
+local fogConn = nil
+local originalFog = {}
 
-    function FogRemoverModule.SetEnabled(state)
-        print("Fog Remover state changed to:", state) -- عشان تتأكد إنه اشتغل
-        if state then
-            originalFog.FogEnd = Lighting.FogEnd
-            originalFog.FogStart = Lighting.FogStart
-            Lighting.FogEnd = 9e9
-            Lighting.FogStart = 9e9
-            
-            if fogConn then fogConn:Disconnect() end
-            fogConn = Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+-- دالة إزالة الضباب
+local function SetFogRemover(state)
+    fogRemoverEnabled = state
+    if state then
+        originalFog.FogEnd = Lighting.FogEnd
+        originalFog.FogStart = Lighting.FogStart
+        Lighting.FogEnd = 9e9
+        Lighting.FogStart = 9e9
+        if fogConn then fogConn:Disconnect() end
+        fogConn = Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+            if fogRemoverEnabled then
                 Lighting.FogEnd = 9e9
                 Lighting.FogStart = 9e9
-                print("Fog re-removed!") -- عشان تتأكد إنه مستمر
-            end)
-            print("Fog Removed!")
-        else
-            Lighting.FogEnd = originalFog.FogEnd
-            Lighting.FogStart = originalFog.FogStart
-            if fogConn then fogConn:Disconnect(); fogConn = nil end
-            print("Fog Restored!")
-        end
+            end
+        end)
+    else
+        Lighting.FogEnd = originalFog.FogEnd
+        Lighting.FogStart = originalFog.FogStart
+        if fogConn then fogConn:Disconnect(); fogConn = nil end
     end
 end
 
-return FogRemoverModule
+-- حذف المؤثرات القديمة
+for _, v in pairs(Lighting:GetChildren()) do
+    if v:IsA("Atmosphere") or v:IsA("BloomEffect") or v:IsA("ColorCorrectionEffect")
+    or v:IsA("DepthOfFieldEffect") or v:IsA("SunRaysEffect") then
+        v:Destroy()
+    end
+end
+
+-- إعدادات عامة
+Lighting.Technology = Enum.Technology.Future
+Lighting.GlobalShadows = true
+Lighting.ShadowSoftness = 0.35
+Lighting.Brightness = 4
+Lighting.ClockTime = 8
+
+-- إضافة مؤثرات جديدة
+local Atmosphere = Instance.new("Atmosphere", Lighting)
+local CC = Instance.new("ColorCorrectionEffect", Lighting)
+local SR = Instance.new("SunRaysEffect", Lighting)
+local Bloom = Instance.new("BloomEffect", Lighting)
+
+Bloom.Intensity = 0.15
+Bloom.Threshold = 0.6
+Bloom.Size = 1800
+
+-- تطبيق الوضع
+if mode == "Summer" then
+    Lighting.ColorShift_Top = Color3.fromRGB(255, 250, 225)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(170, 210, 255)
+    Atmosphere.Color = Color3.fromRGB(255, 255, 255)
+    Atmosphere.Density = 0.35
+    CC.TintColor = Color3.fromRGB(255, 235, 190)
+    CC.Brightness = 0.15
+    CC.Saturation = 0.2
+    SR.Intensity = 0.15
+    Terrain.WaterColor = Color3.fromRGB(100, 160, 255)
+    
+elseif mode == "Autumn" then
+    Lighting.ColorShift_Top = Color3.fromRGB(255, 220, 160)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(140, 100, 70)
+    Atmosphere.Color = Color3.fromRGB(255, 200, 160)
+    Atmosphere.Density = 0.4
+    CC.TintColor = Color3.fromRGB(230, 160, 70)
+    CC.Brightness = 0.1
+    SR.Intensity = 0.1
+    Terrain.WaterColor = Color3.fromRGB(180, 130, 90)
+    
+elseif mode == "Spring" then
+    Lighting.ColorShift_Top = Color3.fromRGB(210, 255, 220)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(180, 220, 190)
+    Atmosphere.Color = Color3.fromRGB(210, 255, 220)
+    Atmosphere.Density = 0.25
+    CC.TintColor = Color3.fromRGB(210, 255, 210)
+    CC.Saturation = 0.3
+    Terrain.WaterColor = Color3.fromRGB(120, 200, 140)
+    
+elseif mode == "Winter" then
+    Lighting.ColorShift_Top = Color3.fromRGB(200, 230, 255)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(150, 170, 190)
+    Atmosphere.Color = Color3.fromRGB(190, 220, 255)
+    Atmosphere.Density = 0.45
+    CC.TintColor = Color3.fromRGB(200, 230, 255)
+    CC.Saturation = -0.1
+    SR.Intensity = 0.08
+    Terrain.WaterColor = Color3.fromRGB(180, 220, 255)
+end
+
+Terrain.WaterWaveSize = 0.15
+Terrain.WaterTransparency = 0.2
+
+print("RTX "..mode.." Mode Active")
+
+-- ========== دوال التحكم ==========
+-- استخدم هذي الدالة عشان تشغل إزالة الضباب: SetFogRemover(true)
+-- استخدم هذي الدالة عشان تطفئ إزالة الضباب: SetFogRemover(false)
