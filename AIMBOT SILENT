@@ -1,6 +1,6 @@
--- █ AIMBOT (SILENT) + HITBOX VISUALIZER & COMBAT SCRIPT (دمج كامل)
--- الـ Hitbox: حجم 60، مخفي، يعمل على اللاعبين مع KillAura
--- القراصنة يستهدفون الكل، البحرية تستهدف القراصنة فقط
+-- █ AIMBOT (SILENT) - مع هيت بوكس كبير (حجم 80 + KillAura)
+-- تم حذف هيت بوكس التكبير القديم ووضع هيت بوكس سكربتك الأول مكانه
+-- الحجم: أقصى حد (80) | مخفي بالكامل
 
 local AimbotModule = {}
 
@@ -13,9 +13,6 @@ do
 
     getgenv().AimbotActive = false
 
-    -- ==================================================
-    -- إعدادات الـ Aimbot
-    -- ==================================================
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1500,
@@ -23,16 +20,15 @@ do
     }
 
     -- ==================================================
-    -- إعدادات الـ Hitbox (من السكربت الأول - كاملة)
+    -- هيت بوكس من سكربتك الأول (حجم 80)
     -- ==================================================
     local HitboxSettings = {
-        HitboxSize = Vector3.new(60, 60, 60),  -- أقصى حجم ممكن
+        HitboxSize = Vector3.new(80, 80, 80),  -- أقصى حجم 80
         HitboxTransparency = 1,                 -- مخفي بالكامل
         HitboxColor = Color3.fromRGB(255, 0, 0),
         KillAuraEnabled = true
     }
 
-    -- استدعاء دوال اللعبة الأساسية للـ KillAura
     local CombatController = nil
     local WeaponToolShared = nil
 
@@ -41,17 +37,12 @@ do
         WeaponToolShared = require(ReplicatedStorage:WaitForChild("SharedComponents"):WaitForChild("WeaponToolShared"))
     end)
 
-    -- حالة تشغيل الـ Hitbox
     local HitboxActive = true
     local RenderConnection = nil
 
-    -- ==================================================
-    -- وظيفة تعديل الـ Hitbox (من السكربت الأول مع KillAura)
-    -- ==================================================
     local function modifyHitbox(character)
         if not HitboxActive then return end
         if not getgenv().AimbotActive then return end
-        
         if character and character.Name ~= player.Name then
             local rootPart = character:FindFirstChild("HumanoidRootPart")
             local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -64,7 +55,6 @@ do
                     rootPart.Color = HitboxSettings.HitboxColor
                     rootPart.Material = Enum.Material.ForceField
                     
-                    -- KillAura من السكربت الأول
                     if HitboxSettings.KillAuraEnabled and CombatController and type(CombatController.runHitDetection) == "function" then
                         task.spawn(function()
                             pcall(function()
@@ -77,13 +67,10 @@ do
         end
     end
 
-    -- الحلقة الرئيسية للـ Hitbox (تعمل على اللاعبين)
     local function startHitboxLoop()
         if RenderConnection then return end
         RenderConnection = RunService.RenderStepped:Connect(function()
             if not HitboxActive or not getgenv().AimbotActive then return end
-            
-            -- البحث عن اللاعبين فقط
             for _, pl in pairs(Players:GetPlayers()) do
                 if pl ~= player and pl.Character then
                     modifyHitbox(pl.Character)
@@ -92,14 +79,11 @@ do
         end)
     end
 
-    -- دالة إيقاف الـ Hitbox ومسح التعديلات
     local function stopHitboxAndClear()
         if RenderConnection then
             RenderConnection:Disconnect()
             RenderConnection = nil
         end
-        
-        -- إعادة حجم اللاعبين إلى الطبيعي
         for _, pl in pairs(Players:GetPlayers()) do
             if pl ~= player and pl.Character then
                 pcall(function()
@@ -116,7 +100,7 @@ do
     end
 
     -- ==================================================
-    -- التحقق من العدو/الصديق حسب الفريق
+    -- باقي كود الـ Aimbot (نفسه ما تغير)
     -- ==================================================
     
     local function IsValidEnemy(plr)
@@ -150,14 +134,12 @@ do
     local CurrentTarget = nil
     local CurrentTargetPos = nil
 
-    -- خط الرسم على الهدف
     local TargetLine = Drawing.new("Line")
     TargetLine.Color = Color3.fromRGB(180, 0, 255)
     TargetLine.Thickness = 2
     TargetLine.Transparency = 1
     TargetLine.Visible = false
 
-    -- الحصول على أقرب عدو
     local function GetNearestEnemy()
         local char = player.Character
         if not char then return nil end
@@ -181,7 +163,6 @@ do
         return nearest
     end
 
-    -- تحديث الهدف المستهدف
     task.spawn(function()
         while true do
             if getgenv().AimbotActive then
@@ -206,7 +187,6 @@ do
         end
     end)
 
-    -- رسم الخط
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive or not CurrentTargetPos then
             TargetLine.Visible = false
@@ -225,7 +205,6 @@ do
         end
     end)
 
-    -- Silent Aim (__index)
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
@@ -236,7 +215,6 @@ do
         return oldIndex(self, index)
     end)
 
-    -- Silent Aim (__namecall)
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         local method = getnamecallmethod()
@@ -262,13 +240,9 @@ do
     -- بدء تشغيل الـ Hitbox
     startHitboxLoop()
 
-    print("[ARAKS HUB] AIMBOT + HITBOX (حجم 60 + KillAura) - تم الدمج الكامل")
-    print("[ARAKS HUB] قراصنة: يستهدفون الكل | بحرية: يستهدفون القراصنة فقط")
+    print("[ARAKS HUB] AIMBOT LOADED - قراصنة: الكل | بحرية: القراصنة فقط")
+    print("[ARAKS HUB] هيت بوكس حجم 80 مخفي مع KillAura")
 
-    -- ==================================================
-    -- API للتحكم من الـ GUI الرئيسي
-    -- ==================================================
-    
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
         if not state then
@@ -276,19 +250,6 @@ do
         else
             startHitboxLoop()
         end
-    end
-
-    function AimbotModule:SetHitboxSize(SizeValue)
-        HitboxSettings.HitboxSize = Vector3.new(SizeValue, SizeValue, SizeValue)
-        print("[Hitbox] تم تغيير الحجم إلى:", SizeValue)
-    end
-
-    function AimbotModule:GetHitboxSize()
-        return HitboxSettings.HitboxSize.X
-    end
-
-    function AimbotModule:IsHitboxEnabled()
-        return HitboxActive
     end
 end
 
