@@ -1,5 +1,6 @@
 -- ████████████████████████████████████████████████████████████████████████████████
--- █ VISUAL MODULES PACK (FOG REMOVER + GLOBAL FONT) - FIXED
+-- █ VISUAL MODULES PACK (Fog Remover + Global Font)
+-- █ خام واحد - موديلين - رابط واحد
 -- ████████████████████████████████████████████████████████████████████████████████
 
 local VisualModules = {}
@@ -9,38 +10,29 @@ do
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
 
-    -- ========== موديل إزالة الضباب (تم تعديله ليعمل بشكل مضمون) ==========
+    -- ==================== موديل إزالة الضباب ====================
     local fogConn = nil
     local originalFog = {}
 
     local function SetFogRemover(state)
         if state then
-            -- حفظ الإعدادات الأصلية
-            if originalFog.FogEnd == nil then
-                originalFog.FogEnd = Lighting.FogEnd
-                originalFog.FogStart = Lighting.FogStart
-                originalFog.FogColor = Lighting.FogColor
-            end
-            
-            -- القيم الجديدة (استخدمنا 999999999 بدلاً من 9e9)
-            Lighting.FogEnd = 999999999
-            Lighting.FogStart = 999999999
-            Lighting.FogColor = Color3.new(0, 0, 0)
-            
+            originalFog.FogEnd = Lighting.FogEnd
+            originalFog.FogStart = Lighting.FogStart
+            Lighting.FogEnd = 9e9
+            Lighting.FogStart = 9e9
             if fogConn then fogConn:Disconnect() end
             fogConn = Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
-                Lighting.FogEnd = 999999999
-                Lighting.FogStart = 999999999
+                Lighting.FogEnd = 9e9
+                Lighting.FogStart = 9e9
             end)
         else
-            Lighting.FogEnd = originalFog.FogEnd or 100000
-            Lighting.FogStart = originalFog.FogStart or 0
-            Lighting.FogColor = originalFog.FogColor or Color3.new(0.5, 0.5, 0.5)
+            Lighting.FogEnd = originalFog.FogEnd
+            Lighting.FogStart = originalFog.FogStart
             if fogConn then fogConn:Disconnect(); fogConn = nil end
         end
     end
 
-    -- ========== موديل تغيير الخط (يعمل بدون مشاكل) ==========
+    -- ==================== موديل تغيير الخط ====================
     local originalFonts = {}
     local fontConn = nil
 
@@ -77,7 +69,7 @@ do
         end
     end
 
-    -- ========== الدوال العامة ==========
+    -- ==================== الدوال العامة ====================
     function VisualModules.FogRemover(state)
         SetFogRemover(state)
     end
