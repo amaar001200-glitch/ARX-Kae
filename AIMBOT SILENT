@@ -1,5 +1,6 @@
--- █ ARAKS HUB AIMBOT - FULL FIXED (HITBOX VISIBLE & LARGE)
--- ✅ الـ Hitbox كبير جداً 30x30 ✅ ظاهر ومكشوف ✅ بدون تجميد
+-- █ ARAKS HUB AIMBOT - ULTIMATE HITBOX LOCK (حتى المسافات البعيدة)
+-- ✅ يثبت الـ Hitbox بحجم 30x30 حتى لو ابتعد الخصم 1000 متر
+-- ✅ بدون تجميد | ✅ بدون ضياع ضربات
 
 local AimbotModule = {}
 
@@ -21,7 +22,7 @@ local Config = {
     TargetPart = "HumanoidRootPart",
     MaxDistance = 1000,
     Prediction = 0.14,
-    HitboxSize = 30  -- ✅ حجم كبير جداً 30x30 (يضمن إصابة السيف المستقيم والسريع)
+    HitboxSize = 30  -- حجم ضخم
 }
 
 -- =========================
@@ -29,7 +30,6 @@ local Config = {
 -- =========================
 local CurrentTarget = nil
 local CurrentTargetPos = nil
-local lastTarget = nil
 
 -- =========================
 -- TEAM CHECK
@@ -82,79 +82,47 @@ local function GetNearestEnemy()
 end
 
 -- =========================
--- ✅ MASSIVE VISIBLE HITBOX SYSTEM (30x30 - مكشوف وكبير)
+-- 🔥 HITBOX LOCK (يثبت الحجم حتى لو ابتعد الخصم)
 -- =========================
-local EnlargedTargets = {}
-
-local function ApplyMassiveHitbox(plr)
-    if not plr or not plr.Character then return end
+local function ForceMassiveHitbox(plr)
+    if not plr or not plr.Character then return false end
     
     local root = plr.Character:FindFirstChild("HumanoidRootPart")
     local hum = plr.Character:FindFirstChildOfClass("Humanoid")
     
     if root and hum and hum.Health > 0 then
-        local newSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+        local targetSize = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
         
-        pcall(function()
-            -- ✅ نجعل الـ Hitbox كبير وظاهر (مخفي مشكلة)
-            root.Size = newSize
-            root.CanCollide = false
-            root.Transparency = 0  -- ✅ ظاهر وليس مخفي (عشان السيف السريع يشوفه)
-            root.Material = Enum.Material.Neon  -- ✅ يلمع عشان يبان أكثر
-            
-            -- ✅ نكبر كل أجزاء الجسم عشان السيف السريع ما يخطئ
-            local allParts = plr.Character:GetChildren()
-            for _, part in ipairs(allParts) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.Size = newSize
-                    part.CanCollide = false
-                    part.Transparency = 0  -- ✅ ظاهر
+        -- نتحقق إذا الحجم تغير (بسبب بعد المسافة أو غيرها)
+        if root.Size ~= targetSize then
+            pcall(function()
+                root.Size = targetSize
+                root.CanCollide = false
+                root.Transparency = 0
+                
+                -- نثبت كل أجزاء الجسم أيضاً
+                local allParts = plr.Character:GetChildren()
+                for _, part in ipairs(allParts) do
+                    if part:IsA("BasePart") then
+                        part.Size = targetSize
+                        part.CanCollide = false
+                        part.Transparency = 0
+                    end
                 end
-            end
-            
-            EnlargedTargets[plr] = true
-        end)
+            end)
+            return true
+        end
     end
-end
-
-local function ResetHitbox(plr)
-    if not plr or not plr.Character then return end
-    
-    if EnlargedTargets[plr] then
-        pcall(function()
-            local root = plr.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                root.Size = Vector3.new(2, 2, 2)
-                root.CanCollide = true
-                root.Transparency = 1  -- ✅ نرجع مخفي
-                root.Material = Enum.Material.Plastic
-            end
-            
-            local allParts = plr.Character:GetChildren()
-            for _, part in ipairs(allParts) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.Size = Vector3.new(2, 2, 2)
-                    part.CanCollide = true
-                    part.Transparency = 1
-                end
-            end
-            
-            EnlargedTargets[plr] = nil
-        end)
-    end
+    return false
 end
 
 -- =========================
--- AIMBOT UPDATE LOOP (سريع جداً لمنع ضياع الضربات)
+-- AIMBOT UPDATE LOOP (سريع جداً)
 -- =========================
 RunService.RenderStepped:Connect(function()
     if not getgenv().AimbotActive then
         CurrentTarget = nil
         CurrentTargetPos = nil
-        if lastTarget then
-            ResetHitbox(lastTarget)
-            lastTarget = nil
-        end
         return
     end
 
@@ -166,21 +134,6 @@ RunService.RenderStepped:Connect(function()
             CurrentTarget = target
             local velocity = hrp.AssemblyLinearVelocity
             CurrentTargetPos = hrp.Position + (velocity * Config.Prediction)
-            
-            -- ✅ نطبق الهيت بوكس الضخم فوراً
-            if target ~= lastTarget then
-                if lastTarget then
-                    ResetHitbox(lastTarget)
-                end
-                ApplyMassiveHitbox(target)
-                lastTarget = target
-            else
-                -- ✅ نتأكد أن الهيت بوكس باقي كبير وظاهر (مهم للسيف السريع)
-                local root = target.Character:FindFirstChild("HumanoidRootPart")
-                if root and (root.Size.X < Config.HitboxSize - 5 or root.Transparency == 1) then
-                    ApplyMassiveHitbox(target)
-                end
-            end
         else
             CurrentTarget = nil
             CurrentTargetPos = nil
@@ -188,6 +141,18 @@ RunService.RenderStepped:Connect(function()
     else
         CurrentTarget = nil
         CurrentTargetPos = nil
+    end
+end)
+
+-- =========================
+-- 🔥 HITBOX FORCE LOOP (يشتغل بشكل منفصل ومستمر)
+-- كل 0.1 ثانية نثبت الهيت بوكس كبيراً - حتى لو ابتعد الخصم
+-- =========================
+task.spawn(function()
+    while task.wait(0.1) do  -- 10 مرات في الثانية (خفيف ولا يسبب تجميد)
+        if getgenv().AimbotActive and CurrentTarget then
+            ForceMassiveHitbox(CurrentTarget)
+        end
     end
 end)
 
@@ -282,38 +247,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- =========================
--- تنظيف
--- =========================
-Players.PlayerRemoving:Connect(function(plr)
-    ResetHitbox(plr)
-    if CurrentTarget == plr then
-        CurrentTarget = nil
-        CurrentTargetPos = nil
-        lastTarget = nil
-    end
-end)
-
-local function onCharacterAdded(plr, char)
-    char:WaitForChild("Humanoid").Died:Connect(function()
-        if CurrentTarget == plr then
-            CurrentTarget = nil
-            CurrentTargetPos = nil
-            ResetHitbox(plr)
-            lastTarget = nil
-        end
-    end)
-end
-
-for _, plr in ipairs(Players:GetPlayers()) do
-    if plr.Character then
-        onCharacterAdded(plr, plr.Character)
-    end
-    plr.CharacterAdded:Connect(function(char)
-        onCharacterAdded(plr, char)
-    end)
-end
-
--- =========================
 -- API
 -- =========================
 function AimbotModule:SetState(state)
@@ -321,15 +254,11 @@ function AimbotModule:SetState(state)
     if not state then
         CurrentTarget = nil
         CurrentTargetPos = nil
-        if lastTarget then
-            ResetHitbox(lastTarget)
-            lastTarget = nil
-        end
         Line.Visible = false
     end
 end
 
-print("[ARAKS HUB] AIMBOT - Hitbox 30x30 ظاهر وكبير | السيف السريع سيصيب الآن")
+print("[ARAKS HUB] AIMBOT - HITBOX LOCK ACTIVE | الحجم يثبت 30 حتى لو ابتعد الخصم")
 
 end
 
