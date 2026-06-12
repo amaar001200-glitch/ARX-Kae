@@ -1,8 +1,8 @@
--- █ ARAKS HUB AIMBOT (للاعبين فقط + مدى 1000)
--- ✅ المدى 1000 متر حقيقي وعنيف جداً
--- ✅ الـ Hitbox شفاف ومخفي تماماً (Transparency = 1)
--- ✅ الخصم يتلون بالبنفسجي بالكامل ويظهر من خلف الجدران وعلى مسافة 1000 متر
--- ✅ تم حل مشكلة عدم توجيه الضربات وتجميد الحركة نهائياً
+-- █ ARAKS HUB AIMBOT (تحديث الـ Hitbox الفعلي للرأس)
+-- ✅ تم حذف تكبير الـ HumanoidRootPart نهائياً لمنع جليتش عدم تسجيل الضرر
+-- ✅ تم تكبير الـ Head (الرأس) لأنه الـ Hitbox الفعلي والأساسي للضرر
+-- ✅ الـ Hitbox مخفي وشفاف تماماً (Transparency = 1)
+-- ✅ المدى 1000 متر واللون البنفسجي يعمل بوضوح كامل من أي مسافة
 
 local AimbotModule = {}
 
@@ -15,10 +15,10 @@ do
     getgenv().AimbotActive = false
 
     local AimbotConfig = {
-        TargetPart = "HumanoidRootPart",
-        MaxDistance = 1000,  -- مدى 1000 متر حقيقي
-        HitboxSize = 60,     -- حجم 60 يضمن اللمس التلقائي والإصابة من مسافات بعيدة
-        Prediction = 0.08,   -- تنبؤ متوازن وسريع جداً للضربات
+        TargetPart = "Head",  -- الاعتماد على الرأس لتسجيل الضرر الفعلي
+        MaxDistance = 1000,   -- مدى 1000 متر حقيقي
+        HitboxSize = 20,      -- الحجم المثالي للرأس لضمان الجلد بدون حجب السيرفر للضرر
+        Prediction = 0.08,    -- تنبؤ متوازن وسريع
     }
 
     -- ==================================================
@@ -58,11 +58,10 @@ do
     local CurrentTargetPos = nil
     local lastTarget = nil
     
-    -- إنشاء مظهر بنفسجي خارق يظهر من أي مسافة 1000 متر
     local PurpleChams = Instance.new("BoxHandleAdornment")
-    PurpleChams.Size = Vector3.new(4, 6, 4) -- يغطي حجم جسم اللاعب بالكامل
-    PurpleChams.Color3 = Color3.fromRGB(160, 32, 240) -- بنفسجي نيون واضح
-    PurpleChams.AlwaysOnTop = true -- يظهر من خلف الجدران والمسافات البعيدة
+    PurpleChams.Size = Vector3.new(4, 6, 4) -- يغطي حجم الخصم بالكامل
+    PurpleChams.Color3 = Color3.fromRGB(160, 32, 240) -- بنفسجي نيون
+    PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
     PurpleChams.Transparency = 0.4
     PurpleChams.Visible = false
@@ -100,45 +99,50 @@ do
     end
     
     -- ==================================================
-    -- تطبيق Hitbox (شفاف بالكامل لللاعبين فقط)
+    -- تطبيق الـ Hitbox الفعلي (تكبير الرأس وتصفيره مرئياً)
     -- ==================================================
     local function ApplyHitbox(plr)
         if not plr or not plr.Character then return end
         if not plr:IsA("Player") then return end
         
+        local targetPart = plr.Character:FindFirstChild(AimbotConfig.TargetPart) -- الرأس
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
         local hum = plr.Character:FindFirstChildOfClass("Humanoid")
         
-        if rootPart and hum and hum.Health > 0 then
+        if targetPart and hum and hum.Health > 0 then
             pcall(function()
-                -- تكبير السيرفر هيد بوكس وضمان عدم حجب الضربات
-                rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                rootPart.CanCollide = false
-                rootPart.Transparency = 1.0 -- شفاف 100% لا يوجد أي أثر للبوكس على الشاشة
+                -- تكبير الرأس وهو الـ Hitbox الفعلي للضرر
+                targetPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                targetPart.CanCollide = false
+                targetPart.Transparency = 1.0 -- شفاف تماماً ومخفي 100%
                 
-                -- تفعيل اللون البنفسجي على الخصم فوراً ومن أي مسافة
-                PurpleChams.Adornee = rootPart
-                PurpleChams.Visible = true
+                -- تشغيل التلوين البنفسجي على الخصم من أي مسافة
+                if rootPart then
+                    PurpleChams.Adornee = rootPart
+                    PurpleChams.Visible = true
+                end
             end)
         end
     end
     
     -- ==================================================
-    -- إعادة ضبط Hitbox والتأثيرات
+    -- إعادة ضبط الـ Hitbox الفعلي والتأثيرات
     -- ==================================================
     local function ResetHitbox(plr)
         if not plr or not plr.Character then return end
         
+        local targetPart = plr.Character:FindFirstChild(AimbotConfig.TargetPart)
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-        if rootPart then
+        
+        if targetPart then
             pcall(function()
-                rootPart.Size = Vector3.new(2, 2, 2)
-                rootPart.CanCollide = true
-                rootPart.Transparency = 0
+                targetPart.Size = Vector3.new(2, 1, 1) -- الحجم الطبيعي للرأس في روبلوكس
+                targetPart.CanCollide = true
+                targetPart.Transparency = 0
             end)
         end
         
-        if PurpleChams.Adornee == rootPart then
+        if rootPart and PurpleChams.Adornee == rootPart then
             PurpleChams.Visible = false
             PurpleChams.Adornee = nil
         end
@@ -162,9 +166,9 @@ do
         local target = GetNearestEnemy()
         
         if target and target.Character then
-            local hrp = target.Character:FindFirstChild(AimbotConfig.TargetPart)
+            local targetPart = target.Character:FindFirstChild(AimbotConfig.TargetPart)
             
-            if hrp then
+            if targetPart then
                 if target ~= lastTarget then
                     if lastTarget then
                         ResetHitbox(lastTarget)
@@ -175,9 +179,9 @@ do
                 
                 CurrentTarget = target
                 
-                -- التنبؤ بالحركة للمسافات البعيدة (1000 متر)
-                local velocity = hrp.AssemblyLinearVelocity
-                CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
+                -- التنبؤ بحركة الرأس للمسافات البعيدة
+                local velocity = targetPart.AssemblyLinearVelocity
+                CurrentTargetPos = targetPart.Position + (velocity * AimbotConfig.Prediction)
             else
                 CurrentTarget = nil
                 CurrentTargetPos = nil
@@ -195,7 +199,7 @@ do
     end)
     
     -- ==================================================
-    -- تثبيت مستمر للـ Hitbox والتلوين البنفسجي
+    -- تثبيت مستمر للـ Hitbox الجديد والتلوين البنفسجي
     -- ==================================================
     task.spawn(function()
         while task.wait(0.2) do
@@ -208,7 +212,7 @@ do
     end)
     
     -- ==================================================
-    -- SILENT AIM (توجيه الضربات المباشر)
+    -- SILENT AIM (توجيه الضربات المباشر للرأس المكبّر)
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -224,7 +228,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK (توجيه ريموتات المهارات للخصم دون التأثير على حركة اللاعب)
+    -- REMOTE HOOK (توجيه ريموتات المهارات دون أي تجميد أو بطء للاعب)
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -235,11 +239,9 @@ do
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
                 
-                -- حماية ريموتات التنقل والـ Dash الخاصة بك لمنع التجميد أو البطء
                 if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") and not remoteName:find("spawn") then
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
-                            -- توجيه الآيـم والضربات فوراً إلى موقع الخصم المستهدف
                             args[i] = CurrentTargetPos
                             return oldNamecall(self, unpack(args))
                         end
@@ -278,7 +280,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] المدى 1000م حقيقي | الـ Hitbox مخفي تماماً | اللون البنفسجي يعمل من أي مسافة!")
+    print("[ARAKS HUB] HEAD HITBOX FIXED - تم تعديل الهيت بوكس الفعلي للرأس بنجاح وجعله شفافاً!")
 end
 
 return AimbotModule
