@@ -1,7 +1,8 @@
 -- █ ARAKS HUB AIMBOT (للاعبين فقط + مدى 1000)
--- ✅ الـ Hitbox مخفي وشفاف بالكامل
--- ✅ لون الخصم يتحول للبنفسجي عند استهدافه (تم إلغاء الخط)
--- ✅ تصويب قوي جداً بدون تجميد أو بطء للمهارات
+-- ✅ المدى 1000 متر حقيقي وعنيف جداً
+-- ✅ الـ Hitbox شفاف ومخفي تماماً (Transparency = 1)
+-- ✅ الخصم يتلون بالبنفسجي بالكامل ويظهر من خلف الجدران وعلى مسافة 1000 متر
+-- ✅ تم حل مشكلة عدم توجيه الضربات وتجميد الحركة نهائياً
 
 local AimbotModule = {}
 
@@ -15,9 +16,9 @@ do
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
-        MaxDistance = 1000,  -- مدى 1000
-        HitboxSize = 25,     -- حجم مثالي لضمان الإصابة بدون جليتش أو حظر ضربات
-        Prediction = 0.05,   -- تنبؤ محسّن لمنع تضييع الضربات
+        MaxDistance = 1000,  -- مدى 1000 متر حقيقي
+        HitboxSize = 60,     -- حجم 60 يضمن اللمس التلقائي والإصابة من مسافات بعيدة
+        Prediction = 0.08,   -- تنبؤ متوازن وسريع جداً للضربات
     }
 
     -- ==================================================
@@ -51,23 +52,24 @@ do
     end
     
     -- ==================================================
-    -- المتغيرات والتأثيرات
+    -- المتغيرات وصناعة التلوين البنفسجي للمسافات البعيدة
     -- ==================================================
     local CurrentTarget = nil
     local CurrentTargetPos = nil
     local lastTarget = nil
     
-    -- إنشاء التأثير البنفسجي حول اللاعب
-    local TargetHighlight = Instance.new("Highlight")
-    TargetHighlight.FillColor = Color3.fromRGB(150, 0, 255)   -- لون بنفسجي داخل الجسم
-    TargetHighlight.OutlineColor = Color3.fromRGB(255, 0, 255) -- تحديد بنفسجي مضيء
-    TargetHighlight.FillTransparency = 0.5
-    TargetHighlight.OutlineTransparency = 0
-    TargetHighlight.Enabled = false
-    TargetHighlight.Parent = game:GetService("CoreGui") -- لضمان عدم حذفه من اللعبة
+    -- إنشاء مظهر بنفسجي خارق يظهر من أي مسافة 1000 متر
+    local PurpleChams = Instance.new("BoxHandleAdornment")
+    PurpleChams.Size = Vector3.new(4, 6, 4) -- يغطي حجم جسم اللاعب بالكامل
+    PurpleChams.Color3 = Color3.fromRGB(160, 32, 240) -- بنفسجي نيون واضح
+    PurpleChams.AlwaysOnTop = true -- يظهر من خلف الجدران والمسافات البعيدة
+    PurpleChams.ZIndex = 10
+    PurpleChams.Transparency = 0.4
+    PurpleChams.Visible = false
+    PurpleChams.Parent = game:GetService("CoreGui")
     
     -- ==================================================
-    -- الحصول على أقرب لاعب
+    -- الحصول على أقرب لاعب (مدى 1000)
     -- ==================================================
     local function GetNearestEnemy()
         local char = player.Character
@@ -109,13 +111,14 @@ do
         
         if rootPart and hum and hum.Health > 0 then
             pcall(function()
+                -- تكبير السيرفر هيد بوكس وضمان عدم حجب الضربات
                 rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
                 rootPart.CanCollide = false
-                rootPart.Transparency = 1.0 -- 1.0 تعني شفاف بالكامل ولا يظهر أبداً
+                rootPart.Transparency = 1.0 -- شفاف 100% لا يوجد أي أثر للبوكس على الشاشة
                 
-                -- تفعيل التأثير البنفسجي على شخصية الخصم
-                TargetHighlight.Adornee = plr.Character
-                TargetHighlight.Enabled = true
+                -- تفعيل اللون البنفسجي على الخصم فوراً ومن أي مسافة
+                PurpleChams.Adornee = rootPart
+                PurpleChams.Visible = true
             end)
         end
     end
@@ -131,13 +134,13 @@ do
             pcall(function()
                 rootPart.Size = Vector3.new(2, 2, 2)
                 rootPart.CanCollide = true
-                rootPart.Transparency = 0 -- إعادته لشروطه الطبيعية
+                rootPart.Transparency = 0
             end)
         end
         
-        if TargetHighlight.Adornee == plr.Character then
-            TargetHighlight.Enabled = false
-            TargetHighlight.Adornee = nil
+        if PurpleChams.Adornee == rootPart then
+            PurpleChams.Visible = false
+            PurpleChams.Adornee = nil
         end
     end
     
@@ -152,7 +155,7 @@ do
             end
             CurrentTarget = nil
             CurrentTargetPos = nil
-            TargetHighlight.Enabled = false
+            PurpleChams.Visible = false
             return
         end
         
@@ -172,13 +175,13 @@ do
                 
                 CurrentTarget = target
                 
-                -- حساب التنبؤ الذكي لحركة الخصم
+                -- التنبؤ بالحركة للمسافات البعيدة (1000 متر)
                 local velocity = hrp.AssemblyLinearVelocity
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
             else
                 CurrentTarget = nil
                 CurrentTargetPos = nil
-                TargetHighlight.Enabled = false
+                PurpleChams.Visible = false
             end
         else
             if lastTarget then
@@ -187,15 +190,15 @@ do
             end
             CurrentTarget = nil
             CurrentTargetPos = nil
-            TargetHighlight.Enabled = false
+            PurpleChams.Visible = false
         end
     end)
     
     -- ==================================================
-    -- تثبيت الـ Hitbox بشكل مستمر
+    -- تثبيت مستمر للـ Hitbox والتلوين البنفسجي
     -- ==================================================
     task.spawn(function()
-        while task.wait(0.3) do
+        while task.wait(0.2) do
             if getgenv().AimbotActive and lastTarget then
                 if lastTarget:IsA("Player") then 
                     ApplyHitbox(lastTarget)
@@ -205,7 +208,7 @@ do
     end)
     
     -- ==================================================
-    -- SILENT AIM (تعديل دقيق لمنع تضييع الضربات)
+    -- SILENT AIM (توجيه الضربات المباشر)
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -221,7 +224,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK (تم إصلاح مشكلة تجميد المهارات والبطء هنا)
+    -- REMOTE HOOK (توجيه ريموتات المهارات للخصم دون التأثير على حركة اللاعب)
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -232,15 +235,13 @@ do
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
                 
-                -- فلاتر صارمة لمنع التعديل على ريموتات حركة اللاعب الخاص بك
+                -- حماية ريموتات التنقل والـ Dash الخاصة بك لمنع التجميد أو البطء
                 if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") and not remoteName:find("spawn") then
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
-                            -- التحقق من أن المسافة قريبة من الخصم المستهدف لمنع تغيير إحداثيات خاطئة
-                            if (v - CurrentTargetPos).Magnitude < 150 or remoteName:find("skill") or remoteName:find("use") then
-                                args[i] = CurrentTargetPos
-                                return oldNamecall(self, unpack(args))
-                            end
+                            -- توجيه الآيـم والضربات فوراً إلى موقع الخصم المستهدف
+                            args[i] = CurrentTargetPos
+                            return oldNamecall(self, unpack(args))
                         end
                     end
                 end
@@ -250,14 +251,14 @@ do
     end)
     
     -- ==================================================
-    -- تنظيف عند مغادرة اللاعب
+    -- تنظيف عند خروج اللاعب
     -- ==================================================
     Players.PlayerRemoving:Connect(function(plr)
         if lastTarget == plr then
             ResetHitbox(plr)
             lastTarget = nil
             CurrentTarget = nil
-            TargetHighlight.Enabled = false
+            PurpleChams.Visible = false
         end
     end)
     
@@ -273,11 +274,11 @@ do
             end
             CurrentTarget = nil
             CurrentTargetPos = nil
-            TargetHighlight.Enabled = false
+            PurpleChams.Visible = false
         end
     end
     
-    print("[ARAKS HUB] FIXED - تم إصلاح البطء والتجميد | الـ Hitbox مخفي | لون الخصم بنفسجي")
+    print("[ARAKS HUB] المدى 1000م حقيقي | الـ Hitbox مخفي تماماً | اللون البنفسجي يعمل من أي مسافة!")
 end
 
 return AimbotModule
