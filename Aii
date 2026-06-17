@@ -1,5 +1,5 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (GIANT BLOCK + GIANT LOCAL PLAYER)
--- version 2.0 (Fixed: Giant Enemy Solid Block + Giant Local Player Size + Strict Clean Off)
+-- █ ARAKS HUB | AUTO HUNT MODULE (GIANT X3 + PvP ATTRIBUTE FILTER + SYNC TARGET SKILLS)
+-- version 2.1 (Fixed: Cancel Skills on Retarget + Ignore PvpDisabled + Massive Size 120)
 
 local AutoHuntModule = {}
 
@@ -26,16 +26,22 @@ pcall(function()
     CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
 end)
 
-local EnemyBlockSize = 50 -- حجم الكتلة الضخمة المحيطة بالعدو
-local MyScaleSize = 15 -- حجم التكبير لشخصيتك أنت (لتصبح عملاقاً)
+local EnemyBlockSize = 120 -- حجم الكتلة النيون العملاقة للأعداء
+local MyScaleSize = 45 -- حجم شخصيتك العملاقة للضرب من بعيد جداً
 local TweenSpeed = 320 
 local currentTween = nil
 local GlobalTargetPos = nil
+local CurrentSkillThread = nil -- خيط التحكم لإلغاء المهارات عند تبديل اللاعب
 
--- نظام تصفية الفرق
+-- نظام تصفية الفرق + فحص كاشف الـ PvP (تجاهل المغلقين)
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
     if not plr:IsA("Player") then return false end
+    
+    -- فحص خاصية إغلاق الـ PvP المأخوذة من موديول الرادار
+    local pvpDisabled = false
+    pcall(function() pvpDisabled = plr:GetAttribute("PvpDisabled") end)
+    if pvpDisabled then return false end -- تجاهل الخصم فوراً إذا كان مطفئ الـ PvP
     
     local char = plr.Character
     if not char then return false end
@@ -82,7 +88,7 @@ local function TapKey(key)
 end
 
 -- ==================================================
--- تكبير شخصيتك أنت (Local Player) لتصبح عملاقاً وضخماً
+-- تكبير شخصيتك أنت كعملاق خارق للضرب من بعيد جداً
 -- ==================================================
 local function ScaleLocalPlayer(makeGiant)
     local char = LocalPlayer.Character
@@ -99,11 +105,10 @@ local function ScaleLocalPlayer(makeGiant)
                 if part:IsA("BasePart") and part ~= root and not part:FindFirstChild("MyScaleMark") then
                     local m = Instance.new("BoolValue", part)
                     m.Name = "MyScaleMark"
-                    part.Size = part.Size * 3 -- تكبير مظهر شخصيتك 3 أضعاف لتكون عملاق وواضح
+                    part.Size = part.Size * 6 -- تكبير الأطراف والمظهر الخارجي بشكل ضخم جداً متناسق مع الحجم الجديد
                 end
             end
         else
-            -- إرجاع حجمك الطبيعي عند الإطفاء
             if root then
                 root.Size = Vector3.new(2, 2, 2)
                 root.CanCollide = true
@@ -111,7 +116,7 @@ local function ScaleLocalPlayer(makeGiant)
             for _, part in ipairs(char:GetChildren()) do
                 if part:IsA("BasePart") and part:FindFirstChild("MyScaleMark") then
                     part.MyScaleMark:Destroy()
-                    part.Size = part.Size / 3
+                    part.Size = part.Size / 6
                 end
             end
         end
@@ -119,7 +124,7 @@ local function ScaleLocalPlayer(makeGiant)
 end
 
 -- ==================================================
--- صنع كتلة ضخمة صلبة ومشعة حول الخصم لضرب هائل
+-- صنع كتلة ضخمة جداً ومرعبة (120) حول الخصم
 -- ==================================================
 local function ApplyHitboxSystem(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
@@ -129,11 +134,10 @@ local function ApplyHitboxSystem(plr)
     
     if rootPart and humanoid and humanoid.Health > 0 then
         pcall(function()
-            -- تحويل الـ HumanoidRootPart إلى كتلة ضخمة جداً وواضحة كهدف عملاق
             rootPart.Size = Vector3.new(EnemyBlockSize, EnemyBlockSize, EnemyBlockSize)
             rootPart.CanCollide = false
-            rootPart.Transparency = 0.4 -- رؤية واضحة ككتلة صلبة ملونة
-            rootPart.Color = Color3.fromRGB(0, 255, 255) -- لون سيان (أزرق مشع) واضح جداً في القتال
+            rootPart.Transparency = 0.4 
+            rootPart.Color = Color3.fromRGB(0, 255, 255) 
             rootPart.Material = Enum.Material.Neon
             
             if CombatController and type(CombatController.runHitDetection) == "function" then
@@ -143,7 +147,6 @@ local function ApplyHitboxSystem(plr)
     end
 end
 
--- إرجاع الأعداء لحجمهم الطبيعي
 local function ResetHitbox(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
     local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -158,9 +161,9 @@ local function ResetHitbox(plr)
 end
 
 local function ResetAllServerHitboxes()
-    ScaleLocalPlayer(false) -- تصغير شخصيتك للوضع الطبيعي
+    ScaleLocalPlayer(false)
     for _, pl in ipairs(Players:GetPlayers()) do
-        ResetHitbox(pl) -- تصغير الأخصام
+        ResetHitbox(pl)
     end
 end
 
@@ -174,19 +177,27 @@ local function Attack(target)
     end
 end
 
--- نظام مهارات موقوت وهادئ
+-- ==================================================
+-- مهارات موقوتة ذكية (تضرب فقط عند الوصول وتتصفر عند التبديل)
+-- ==================================================
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
-local function FireTimedSkills()
-    task.spawn(function()
+local function FireTimedSkills(targetPlayer)
+    -- إذا كان هناك هجوم شغال للاعب سابق، نقوم بإلغائه فوراً لمنع ضياع المهارات بالطريق
+    if CurrentSkillThread then 
+        task.cancel(CurrentSkillThread) 
+        CurrentSkillThread = nil
+    end
+
+    CurrentSkillThread = task.spawn(function()
         if not IsAlive() or not IsModuleActive() then return end
 
-        -- السلاح 1: 12 ثانية
+        -- 1️⃣ السلاح الأول: 12 ثانية
         TapKey(Enum.KeyCode.One)
         local startTime1 = tick()
         while tick() - startTime1 < 12 do
-            if not IsAlive() or not IsModuleActive() then return end
+            if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
             for _, skill in ipairs(SkillKeys) do
-                if not IsAlive() or not IsModuleActive() then return end
+                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 TapKey(skill)
                 local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                 if tool then pcall(function() tool:Activate() end) end
@@ -195,13 +206,13 @@ local function FireTimedSkills()
             task.wait(0.5)
         end
 
-        -- السلاح 2: 6 ثوانٍ
+        -- 2️⃣ السلاح الثاني: 6 ثوانٍ
         TapKey(Enum.KeyCode.Two)
         local startTime2 = tick()
         while tick() - startTime2 < 6 do
-            if not IsAlive() or not IsModuleActive() then return end
+            if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
             for _, skill in ipairs(SkillKeys) do
-                if not IsAlive() or not IsModuleActive() then return end
+                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 TapKey(skill)
                 local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                 if tool then pcall(function() tool:Activate() end) end
@@ -210,13 +221,13 @@ local function FireTimedSkills()
             task.wait(0.5)
         end
 
-        -- السلوت 3 و 4
+        -- 3️⃣ السلوت 3 و 4
         for _, slot in ipairs({Enum.KeyCode.Three, Enum.KeyCode.Four}) do
-            if not IsAlive() or not IsModuleActive() then return end
+            if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
             TapKey(slot)
             task.wait(0.4)
             for _, skill in ipairs(SkillKeys) do
-                if not IsAlive() or not IsModuleActive() then return end
+                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 TapKey(skill)
                 local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                 if tool then pcall(function() tool:Activate() end) end
@@ -266,17 +277,18 @@ task.spawn(function()
         if not IsAlive() then 
             platform.CFrame = CFrame.new(0, -1000, 0)
             GlobalTargetPos = nil
+            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
             continue 
         end
         
         if not IsModuleActive() then
             platform.CFrame = CFrame.new(0, -1000, 0)
             GlobalTargetPos = nil
+            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
             task.wait(0.2)
             continue
         end
         
-        -- تفعيل تكبير حجم شخصيتك فوراً أثناء التشغيل
         ScaleLocalPlayer(true)
         
         local targets = {}
@@ -294,6 +306,9 @@ task.spawn(function()
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
                 for _, huntTarget in ipairs(targets) do
+                    -- إلغاء أي ضربات قديمة فور الانتقال لخصم جديد لضمان عدم تضييع المهارات بالطريق
+                    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
+                    
                     while IsModuleActive() and IsAlive() and IsValidEnemy(huntTarget) do
                         local enemy = huntTarget.Character
                         local humanoid = enemy and enemy:FindFirstChild("Humanoid")
@@ -301,7 +316,14 @@ task.spawn(function()
                         if humanoid and humanoid.Health > 0 then
                             ApplyHitboxSystem(huntTarget)
                             SmoothMoveTo(enemy, hrp)
-                            FireTimedSkills() 
+                            
+                            -- لا يبدأ بضرب المهارات الجديدة إلا إذا اقترب ووصل للهدف تماماً لحمايتها من الضياع
+                            if (hrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 150 then
+                                if not CurrentSkillThread then
+                                    FireTimedSkills(huntTarget)
+                                end
+                            end
+                            
                             Attack(enemy)
                             task.wait(0.2) 
                         else
@@ -314,6 +336,7 @@ task.spawn(function()
         else
             platform.CFrame = CFrame.new(0, -1000, 0)
             GlobalTargetPos = nil
+            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
         end
     end
 end)
@@ -358,7 +381,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- ==================================================
--- التحكم بالإيقاف الكامل
+-- التحكم بالإيقاف الكامل والآمن
 -- ==================================================
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
@@ -366,6 +389,7 @@ function AutoHuntModule:SetEnabled(state)
         AutoHuntModule.KillNearest = false 
     else
         if currentTween then currentTween:Cancel() end
+        if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
         platform.CFrame = CFrame.new(0, -1000, 0) 
         GlobalTargetPos = nil
         ResetAllServerHitboxes()
@@ -378,6 +402,7 @@ function AutoHuntModule:SetKillNearest(state)
         AutoHuntModule.Enabled = false 
     else
         if currentTween then currentTween:Cancel() end
+        if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
         platform.CFrame = CFrame.new(0, -1000, 0) 
         GlobalTargetPos = nil
         ResetAllServerHitboxes()
@@ -388,14 +413,22 @@ function AutoHuntModule:SetSelectedPlayer(player)
     if player and not IsValidEnemy(player) then return end
     AutoHuntModule.SelectedPlayer = player
     AutoHuntModule.KillNearest = false
-    if not player then ResetAllServerHitboxes() end
+    if not player then 
+        if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
+        ResetAllServerHitboxes() 
+    end
 end
 
-function AutoHuntModule:ResetAllHitboxes() ResetAllServerHitboxes() end
+function AutoHuntModule:ResetAllHitboxes() 
+    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
+    ResetAllServerHitboxes() 
+end
+
 function AutoHuntModule:GetSelectedPlayer() return AutoHuntModule.SelectedPlayer end
 
 function AutoHuntModule:Stop()
     if currentTween then currentTween:Cancel() end
+    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
     platform.CFrame = CFrame.new(0, -1000, 0)
     AutoHuntModule.Enabled = false
     AutoHuntModule.KillNearest = false
