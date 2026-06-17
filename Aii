@@ -1,5 +1,5 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (STRICT STATE FIXED)
--- version 1.8 (Fixed: Instant Turn-Off + Safe Hitbox Toggle + Balanced Skill Delay)
+-- █ ARAKS HUB | AUTO HUNT MODULE (TIMED SLOTS + BALANCED SKILLS + GIANT CHARACTER MESH)
+-- version 1.9 (Fixed: Slot1 12s + Slot2 6s + Slow Skills + Full Enemy Character Scaling)
 
 local AutoHuntModule = {}
 
@@ -26,7 +26,7 @@ pcall(function()
     CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
 end)
 
-local HitboxSize = 800
+local TargetScaleSize = 15 -- حجم التكبير المجسم لجسم اللاعب الخصم
 local TweenSpeed = 320 
 local currentTween = nil
 local GlobalTargetPos = nil
@@ -84,43 +84,63 @@ end
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.03) 
+    task.wait(0.05) 
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
--- تطبيق الهيت بوكس وتكبير الضرر على الأخصام فقط (شخصيتك محمية 100%)
+-- ==================================================
+-- نظام تكبير مظهر وجسم اللاعب الخصم ليكون عملاقاً ومجسماً وواضحاً
+-- ==================================================
 local function ApplyHitboxSystem(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
-    local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+    local char = plr.Character
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
     
-    if rootPart and humanoid and humanoid.Health > 0 then
+    if humanoid and humanoid.Health > 0 then
         pcall(function()
-            rootPart.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
-            rootPart.CanCollide = false
-            rootPart.Transparency = 0.5 
-            rootPart.Color = Color3.fromRGB(165, 0, 255) 
-            rootPart.Material = Enum.Material.ForceField
+            -- تكبير أجزاء الجسم الأساسية لجعل اللاعب مجسم ضخم وواضح جداً بدل المربع البنفسجي
+            for _, part in ipairs(char:GetChildren()) do
+                if part:IsA("BasePart") and (part.Name:find("Torso") or part.Name:find("Leg") or part.Name:find("Arm") or part.Name == "Head" or part.Name == "HumanoidRootPart") then
+                    part.CanCollide = false
+                    if part.Name == "HumanoidRootPart" then
+                        part.Size = Vector3.new(TargetScaleSize, TargetScaleSize, TargetScaleSize)
+                        part.Transparency = 0.7
+                    else
+                        -- تكبير مجسم واضح ومظهري للأطراف والجسم
+                        if not part:FindFirstChild("AraksScaled") then
+                            local mark = Instance.new("BoolValue", part)
+                            mark.Name = "AraksScaled"
+                            part.Size = part.Size * 4 -- تكبير حجم الأطراف المرئية ليصبح عملاقاً وواضحاً
+                        end
+                    end
+                end
+            end
             
             if CombatController and type(CombatController.runHitDetection) == "function" then
-                CombatController.runHitDetection(plr.Character)
+                CombatController.runHitDetection(char)
             end
         end)
     end
 end
 
--- إرجاع الحجم الطبيعي وإزالة المؤثرات البنفسجية فوراً عند الإطفاء
+-- إرجاع مجسم اللاعب لحجمه الطبيعي فوراً عند الإطفاء
 local function ResetHitbox(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
-    local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-    if rootPart then
-        pcall(function()
-            rootPart.Size = Vector3.new(2, 2, 2)
-            rootPart.CanCollide = true
-            rootPart.Transparency = 0
-            rootPart.Material = Enum.Material.Plastic
-        end)
-    end
+    local char = plr.Character
+    pcall(function()
+        for _, part in ipairs(char:GetChildren()) do
+            if part:IsA("BasePart") then
+                if part.Name == "HumanoidRootPart" then
+                    part.Size = Vector3.new(2, 2, 2)
+                    part.Transparency = 0
+                elseif part:FindFirstChild("AraksScaled") then
+                    part.AraksScaled:Destroy()
+                    part.Size = part.Size / 4
+                end
+                part.CanCollide = true
+            end
+        end
+    end)
 end
 
 local function ResetAllServerHitboxes()
@@ -147,22 +167,57 @@ local function Attack(target)
     end
 end
 
--- مهارات مدمجة موزونة وهادئة
-local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+-- مفاتيح المهارات
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
 
-local function FireAllSkills()
+-- ==================================================
+-- نظام المهارات الذكي والموقوت لتبديل الأسلحة (سلوت 1 = 12ث | سلوت 2 = 6ث)
+-- ==================================================
+local function FireTimedSkills()
     task.spawn(function()
-        for _, slot in ipairs(HotbarKeys) do
-            if not IsAlive() or not IsModuleActive() then break end
-            TapKey(slot)
-            task.wait(0.25) 
+        if not IsAlive() or not IsModuleActive() then return end
+
+        -- 1️⃣ السلاح الأول: يثبت عليه لمدة 12 ثانية ويجلد بالمهارات هادئ
+        TapKey(Enum.KeyCode.One)
+        local startTime1 = tick()
+        while tick() - startTime1 < 12 do
+            if not IsAlive() or not IsModuleActive() then return end
             for _, skill in ipairs(SkillKeys) do
-                if not IsAlive() or not IsModuleActive() then break end
+                if not IsAlive() or not IsModuleActive() then return end
                 TapKey(skill)
                 local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                 if tool then pcall(function() tool:Activate() end) end
-                task.wait(0.3) 
+                task.wait(0.6) -- تهدئة وتبطئة الضرب ليكون موزوناً
+            end
+            task.wait(0.5)
+        end
+
+        -- 2️⃣ السلاح الثاني: ينتقل له ويثبت عليه لمدة 6 ثوانٍ كاملة
+        TapKey(Enum.KeyCode.Two)
+        local startTime2 = tick()
+        while tick() - startTime2 < 6 do
+            if not IsAlive() or not IsModuleActive() then return end
+            for _, skill in ipairs(SkillKeys) do
+                if not IsAlive() or not IsModuleActive() then return end
+                TapKey(skill)
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then pcall(function() tool:Activate() end) end
+                task.wait(0.6) -- تباطؤ متزن وممتاز لحساب الضرر
+            end
+            task.wait(0.5)
+        end
+
+        -- 3️⃣ باقي الأسلحة (السلوت 3 و 4): يمر عليها بشكل عادي وسلس
+        for _, slot in ipairs({Enum.KeyCode.Three, Enum.KeyCode.Four}) do
+            if not IsAlive() or not IsModuleActive() then return end
+            TapKey(slot)
+            task.wait(0.4)
+            for _, skill in ipairs(SkillKeys) do
+                if not IsAlive() or not IsModuleActive() then return end
+                TapKey(skill)
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then pcall(function() tool:Activate() end) end
+                task.wait(0.6)
             end
         end
     end)
@@ -236,9 +291,9 @@ task.spawn(function()
                         if humanoid and humanoid.Health > 0 then
                             ApplyHitboxSystem(huntTarget)
                             SmoothMoveTo(enemy, hrp)
-                            FireAllSkills()
+                            FireTimedSkills() -- استدعاء نظام تبديل الأسلحة الموقوت والمهارات الموزونة
                             Attack(enemy)
-                            task.wait(0.1) 
+                            task.wait(0.2) 
                         else
                             break 
                         end
@@ -254,7 +309,7 @@ task.spawn(function()
 end)
 
 -- ==================================================
--- لوب الهيت بوكس الذكي: يكبر فقط عند التشغيل، ويصغّر فوراً عند الإطفاء
+-- لوب الهيت بوكس المجسم: يكبر الخصوم كلاعبين عمالقة عند التشغيل فقط
 -- ==================================================
 task.spawn(function()
     while true do
@@ -265,7 +320,7 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(0.5)
+        task.wait(0.6)
     end
 end)
 
@@ -296,7 +351,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- ==================================================
--- دوال التحكم الخارجية للواجهة (تم ربط الإطفاء الكامل بها)
+-- دوال التحكم الخارجية للواجهة لضمان الإطفاء الفوري والكامل
 -- ==================================================
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
@@ -306,7 +361,7 @@ function AutoHuntModule:SetEnabled(state)
         if currentTween then currentTween:Cancel() end
         platform.CFrame = CFrame.new(0, -1000, 0) 
         GlobalTargetPos = nil
-        ResetAllServerHitboxes() -- إطفاء فوري وتصغير الأحجام
+        ResetAllServerHitboxes()
     end
 end
 
@@ -318,7 +373,7 @@ function AutoHuntModule:SetKillNearest(state)
         if currentTween then currentTween:Cancel() end
         platform.CFrame = CFrame.new(0, -1000, 0) 
         GlobalTargetPos = nil
-        ResetAllServerHitboxes() -- إطفاء فوري وتصغير الأحجام
+        ResetAllServerHitboxes()
     end
 end
 
@@ -354,7 +409,7 @@ function AutoHuntModule:Stop()
     AutoHuntModule.KillNearest = false
     AutoHuntModule.SelectedPlayer = nil
     GlobalTargetPos = nil
-    ResetAllServerHitboxes() -- تنظيف السيرفر بالكامل عند الإيقاف المفاجئ
+    ResetAllServerHitboxes()
 end
 
 return AutoHuntModule
