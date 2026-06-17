@@ -1,8 +1,7 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (SMOOTH TWEEN VERSION + VISIBLE HITBOX 800)
--- ✅ تم تحويل الانتقال الفوري إلى حركة تدريجية ناعمة وسريعة (Tween) لمنع طرد السيرفر (Anti-Kick)
--- ✅ تم ضبط السرعة التدريجية (350) لتكون سريعة جداً وفي نفس الوقت آمنة تماماً ضد الحماية
--- ✅ زر "قتل القريب" يجلد السيرفر بالكامل بالترتيب والتنقل التدريجي
--- ✅ الـ Hitbox البنفسجي العملاق (800) شغال على الأخصام فقط لضمان أعلى دمج بدون اختفاء شخصيتك
+-- █ ARAKS HUB | AUTO HUNT MODULE (FIXED ANTI-CRASH & SMOOTH TWEEN)
+-- ✅ تم إصلاح كسر السكربت عبر ضبط الـ Remote Hook والـ Targets بشكل صحيح
+-- ✅ حركة تدريجية ناعمة (300) تمنع الطرد (Anti-Kick) تماماً
+-- ✅ الـ Hitbox البنفسجي (800) شغال على الخصوم فقط لمنع اختفائك
 
 local AutoHuntModule = {}
 
@@ -19,20 +18,22 @@ do
     local RegisterAttack = Net and Net["RE/RegisterAttack"]
     local RegisterHit = Net and Net["RE/RegisterHit"]
     
-    -- موديول اللعبة للضربات الأصلية
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
     
-    -- بيانات التشغيل
+    -- بيانات التشغيل الثابتة
     local Enabled = false
     local KillNearest = false
     local SelectedPlayer = nil
     local SkillBusy = false
     local HitboxSize = 800
-    local TweenSpeed = 350 -- السرعة التدريجية الآمنة (يمكنك زيادتها أو تقليلها حسب رغبتك)
+    local TweenSpeed = 300 
     local currentTween = nil
+    
+    -- المتغير السري لمنع انكسار الـ Remote Hook
+    local GlobalTargetPos = nil
     
     local function IsValidEnemy(plr)
         if not plr or plr == LocalPlayer then return false end
@@ -51,7 +52,7 @@ do
     local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
     local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
     
-    -- المنصة المتحركة
+    -- المنصة الأمنية
     local platform = Instance.new("Part")
     platform.Name = "ARAKS_Platform"
     platform.Size = Vector3.new(15, 1, 15)
@@ -143,29 +144,23 @@ do
         end
     end
     
-    -- ==================================================
-    -- نظام الحركة التدريجية (Tween) الآمنة ضد الطرد
-    -- ==================================================
+    -- نظام الحركة التدريجية الآمنة مع حماية المنصة لمنع السقوط
     local function SmoothMoveTo(targetChar, myHrp)
-        if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then 
-            platform.CFrame = CFrame.new(0, -1000, 0)
-            return 
-        end
+        if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
         
         local enemyRoot = targetChar.HumanoidRootPart
-        local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 5, 0)
+        local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 6, 0)
         local distance = (targetCFrame.Position - myHrp.Position).Magnitude
         
-        -- تحديث موقع المنصة أثناء التحرك لمنع السقوط
+        GlobalTargetPos = enemyRoot.Position
+        
         local platformLoop = RunService.Heartbeat:Connect(function()
             if myHrp and myHrp.Parent then
                 platform.CFrame = CFrame.new(myHrp.Position.X, myHrp.Position.Y - 3.5, myHrp.Position.Z)
             end
         end)
         
-        -- حساب وقت الرحلة التدريجية بناءً على المسافة والسرعة الثابتة
         local duration = distance / TweenSpeed
-        
         if currentTween then pcall(function() currentTween:Cancel() end) end
         
         currentTween = TweenService:Create(myHrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
@@ -175,12 +170,11 @@ do
         platformLoop:Disconnect()
         currentTween = nil
         
-        -- تصفير السرعة الفيزيائية بعد الوصول لثبات كامل
         myHrp.Velocity = Vector3.zero
         myHrp.RotVelocity = Vector3.zero
     end
     
-    -- لوب المهارات التلقائي
+    -- لوب المهارات التلقائي الآمن
     task.spawn(function()
         while true do
             task.wait(0.3)
@@ -197,7 +191,7 @@ do
                 if target and target.Character then
                     local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
-                    if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 60 then
+                    if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 70 then
                         if not SkillBusy then
                             SkillBusy = true
                             pcall(function()
@@ -219,17 +213,19 @@ do
         end
     end)
     
-    -- لوب القتال والجلد الرئيسي بالترتيب التدريجي
+    -- لوب الحركة والجلد الرئيسي (تم حمايته من الكراش والتعليق)
     task.spawn(function()
         while true do
             task.wait()
             if not IsAlive() then 
                 platform.CFrame = CFrame.new(0, -1000, 0)
+                GlobalTargetPos = nil
                 continue 
             end
             
             if not IsModuleActive() then
                 platform.CFrame = CFrame.new(0, -1000, 0)
+                GlobalTargetPos = nil
                 task.wait(0.2)
                 continue
             end
@@ -250,24 +246,22 @@ do
                             local enemy = huntTarget.Character
                             local humanoid = enemy:FindFirstChild("Humanoid")
                             if humanoid and humanoid.Health > 0 then
-                                -- تشغيل الهيت بوكس على الخصم
                                 ApplyHitboxSystem(huntTarget)
-                                -- طيران تدريجي ناعم نحو الهدف لمنع كشف السيرفر
                                 SmoothMoveTo(enemy, hrp)
-                                -- الجلد عند الوصول
                                 Attack(enemy)
-                                task.wait(0.1) 
+                                task.wait(0.05) 
                             end
                         end
                     end
                 end
             else
                 platform.CFrame = CFrame.new(0, -1000, 0)
+                GlobalTargetPos = nil
             end
         end
     end)
     
-    -- تثبيت دوري للأحجام
+    -- تثبيت دوري للهيت بوكس للأخصام
     task.spawn(function()
         while task.wait(0.5) do
             if IsModuleActive() then
@@ -278,13 +272,40 @@ do
         end
     end)
     
-    -- التحكم بالواجهة
+    -- ==================================================
+    -- REMOTE HOOK (توجيه الضربات المدمج والمحمي من الكراش)
+    -- ==================================================
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        if IsModuleActive() and GlobalTargetPos and not checkcaller() then
+            if method == "FireServer" or method == "InvokeServer" then
+                local remoteName = tostring(self.Name):lower()
+                if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") then
+                    local changed = false
+                    for i, v in ipairs(args) do
+                        if typeof(v) == "Vector3" then
+                            args[i] = GlobalTargetPos
+                            changed = true
+                        end
+                    end
+                    if changed then return oldNamecall(self, unpack(args)) end
+                end
+            end
+        end
+        return oldNamecall(self, ...)
+    end)
+    
+    -- ربط أزرار الـ الواجهة (تعديل مباشر بدون كسر التعريفات)
     function AutoHuntModule:SetEnabled(state)
         Enabled = state
         if state then KillNearest = false end
         if not state then 
             if currentTween then currentTween:Cancel() end
             platform.CFrame = CFrame.new(0, -1000, 0) 
+            GlobalTargetPos = nil
         end
     end
     
@@ -294,6 +315,7 @@ do
         if not state then 
             if currentTween then currentTween:Cancel() end
             platform.CFrame = CFrame.new(0, -1000, 0) 
+            GlobalTargetPos = nil
         end
     end
     
@@ -304,6 +326,7 @@ do
     end
     
     function AutoHuntModule:GetSelectedPlayer() return SelectedPlayer end
+    
     function AutoHuntModule:GetState()
         return {Enabled = Enabled, KillNearest = KillNearest, SelectedPlayer = SelectedPlayer}
     end
@@ -314,6 +337,7 @@ do
         Enabled = false
         KillNearest = false
         SelectedPlayer = nil
+        GlobalTargetPos = nil
         for _, pl in ipairs(Players:GetPlayers()) do ResetHitbox(pl) end
     end
 end
