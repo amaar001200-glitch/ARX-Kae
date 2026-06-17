@@ -1,0 +1,321 @@
+-- █ ARAKS HUB | AUTO HUNT MODULE (SMOOTH TWEEN VERSION + VISIBLE HITBOX 800)
+-- ✅ تم تحويل الانتقال الفوري إلى حركة تدريجية ناعمة وسريعة (Tween) لمنع طرد السيرفر (Anti-Kick)
+-- ✅ تم ضبط السرعة التدريجية (350) لتكون سريعة جداً وفي نفس الوقت آمنة تماماً ضد الحماية
+-- ✅ زر "قتل القريب" يجلد السيرفر بالكامل بالترتيب والتنقل التدريجي
+-- ✅ الـ Hitbox البنفسجي العملاق (800) شغال على الأخصام فقط لضمان أعلى دمج بدون اختفاء شخصيتك
+
+local AutoHuntModule = {}
+
+do
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local TweenService = game:GetService("TweenService")
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    
+    -- Remotes
+    local Net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules.Net
+    local RegisterAttack = Net and Net["RE/RegisterAttack"]
+    local RegisterHit = Net and Net["RE/RegisterHit"]
+    
+    -- موديول اللعبة للضربات الأصلية
+    local CombatController = nil
+    pcall(function()
+        CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
+    end)
+    
+    -- بيانات التشغيل
+    local Enabled = false
+    local KillNearest = false
+    local SelectedPlayer = nil
+    local SkillBusy = false
+    local HitboxSize = 800
+    local TweenSpeed = 350 -- السرعة التدريجية الآمنة (يمكنك زيادتها أو تقليلها حسب رغبتك)
+    local currentTween = nil
+    
+    local function IsValidEnemy(plr)
+        if not plr or plr == LocalPlayer then return false end
+        if not plr:IsA("Player") then return false end
+        if plr.Team == LocalPlayer.Team then return false end
+        
+        local char = plr.Character
+        if not char then return false end
+        
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return false end
+        
+        return true
+    end
+    
+    local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+    local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
+    
+    -- المنصة المتحركة
+    local platform = Instance.new("Part")
+    platform.Name = "ARAKS_Platform"
+    platform.Size = Vector3.new(15, 1, 15)
+    platform.Transparency = 0.5
+    platform.Material = Enum.Material.ForceField
+    platform.Color = Color3.fromRGB(165, 0, 255)
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Parent = workspace
+    platform.CFrame = CFrame.new(0, -1000, 0)
+    
+    local function IsAlive()
+        local char = LocalPlayer.Character
+        if not char then return false end
+        local hum = char:FindFirstChild("Humanoid")
+        return hum and hum.Health > 0
+    end
+    
+    local function IsModuleActive()
+        return Enabled or KillNearest or (SelectedPlayer ~= nil)
+    end
+    
+    local function TapKey(key)
+        if not IsAlive() then return end
+        VirtualInputManager:SendKeyEvent(true, key, false, game)
+        task.wait(0.018)
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    end
+    
+    local function UseSkill(skill)
+        if not IsAlive() then return end
+        TapKey(skill)
+        task.wait(0.04)
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then pcall(function() tool:Activate() end) end
+        task.wait(0.14)
+    end
+    
+    local function ApplyHitboxSystem(plr)
+        if not plr or not plr.Character or plr == LocalPlayer then return end
+        local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
+        local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+        
+        if rootPart and humanoid and humanoid.Health > 0 then
+            pcall(function()
+                rootPart.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+                rootPart.CanCollide = false
+                rootPart.Transparency = 0.5 
+                rootPart.Color = Color3.fromRGB(165, 0, 255) 
+                rootPart.Material = Enum.Material.ForceField
+                
+                if CombatController and type(CombatController.runHitDetection) == "function" then
+                    task.spawn(function()
+                        pcall(function() CombatController.runHitDetection(plr.Character) end)
+                    end)
+                end
+            end)
+        end
+    end
+
+    local function ResetHitbox(plr)
+        if not plr or not plr.Character then return end
+        local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            pcall(function()
+                rootPart.Size = Vector3.new(2, 2, 2)
+                rootPart.CanCollide = true
+                rootPart.Transparency = 0
+                rootPart.Material = Enum.Material.Plastic
+            end)
+        end
+    end
+
+    local function GetAllEnemies()
+        local enemies = {}
+        for _, p in pairs(Players:GetPlayers()) do
+            if IsValidEnemy(p) then table.insert(enemies, p) end
+        end
+        return enemies
+    end
+    
+    local function Attack(target)
+        if not target or not target:FindFirstChild("HumanoidRootPart") then return end
+        if RegisterAttack and RegisterHit then
+            pcall(function()
+                RegisterAttack:FireServer(0.5)
+                RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
+            end)
+        end
+    end
+    
+    -- ==================================================
+    -- نظام الحركة التدريجية (Tween) الآمنة ضد الطرد
+    -- ==================================================
+    local function SmoothMoveTo(targetChar, myHrp)
+        if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then 
+            platform.CFrame = CFrame.new(0, -1000, 0)
+            return 
+        end
+        
+        local enemyRoot = targetChar.HumanoidRootPart
+        local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 5, 0)
+        local distance = (targetCFrame.Position - myHrp.Position).Magnitude
+        
+        -- تحديث موقع المنصة أثناء التحرك لمنع السقوط
+        local platformLoop = RunService.Heartbeat:Connect(function()
+            if myHrp and myHrp.Parent then
+                platform.CFrame = CFrame.new(myHrp.Position.X, myHrp.Position.Y - 3.5, myHrp.Position.Z)
+            end
+        end)
+        
+        -- حساب وقت الرحلة التدريجية بناءً على المسافة والسرعة الثابتة
+        local duration = distance / TweenSpeed
+        
+        if currentTween then pcall(function() currentTween:Cancel() end) end
+        
+        currentTween = TweenService:Create(myHrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
+        currentTween:Play()
+        currentTween.Completed:Wait()
+        
+        platformLoop:Disconnect()
+        currentTween = nil
+        
+        -- تصفير السرعة الفيزيائية بعد الوصول لثبات كامل
+        myHrp.Velocity = Vector3.zero
+        myHrp.RotVelocity = Vector3.zero
+    end
+    
+    -- لوب المهارات التلقائي
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            if not IsAlive() or not IsModuleActive() then continue end
+            
+            local targets = {}
+            if KillNearest then
+                targets = GetAllEnemies()
+            elseif Enabled and SelectedPlayer and IsValidEnemy(SelectedPlayer) then
+                table.insert(targets, SelectedPlayer)
+            end
+            
+            for _, target in ipairs(targets) do
+                if target and target.Character then
+                    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
+                    if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 60 then
+                        if not SkillBusy then
+                            SkillBusy = true
+                            pcall(function()
+                                for _, slot in ipairs(HotbarKeys) do
+                                    if not IsAlive() or not IsModuleActive() then break end
+                                    TapKey(slot)
+                                    task.wait(0.1)
+                                    for _, skill in ipairs(SkillKeys) do
+                                        if not IsAlive() or not IsModuleActive() then break end
+                                        UseSkill(skill)
+                                    end
+                                end
+                            end)
+                            SkillBusy = false
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- لوب القتال والجلد الرئيسي بالترتيب التدريجي
+    task.spawn(function()
+        while true do
+            task.wait()
+            if not IsAlive() then 
+                platform.CFrame = CFrame.new(0, -1000, 0)
+                continue 
+            end
+            
+            if not IsModuleActive() then
+                platform.CFrame = CFrame.new(0, -1000, 0)
+                task.wait(0.2)
+                continue
+            end
+            
+            local targets = {}
+            if KillNearest then
+                targets = GetAllEnemies()
+            elseif Enabled and SelectedPlayer and IsValidEnemy(SelectedPlayer) then
+                table.insert(targets, SelectedPlayer)
+            end
+            
+            if #targets > 0 then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    for _, huntTarget in ipairs(targets) do
+                        if not IsModuleActive() or not IsAlive() then break end
+                        if huntTarget and huntTarget.Character then
+                            local enemy = huntTarget.Character
+                            local humanoid = enemy:FindFirstChild("Humanoid")
+                            if humanoid and humanoid.Health > 0 then
+                                -- تشغيل الهيت بوكس على الخصم
+                                ApplyHitboxSystem(huntTarget)
+                                -- طيران تدريجي ناعم نحو الهدف لمنع كشف السيرفر
+                                SmoothMoveTo(enemy, hrp)
+                                -- الجلد عند الوصول
+                                Attack(enemy)
+                                task.wait(0.1) 
+                            end
+                        end
+                    end
+                end
+            else
+                platform.CFrame = CFrame.new(0, -1000, 0)
+            end
+        end
+    end)
+    
+    -- تثبيت دوري للأحجام
+    task.spawn(function()
+        while task.wait(0.5) do
+            if IsModuleActive() then
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if IsValidEnemy(pl) then ApplyHitboxSystem(pl) end
+                end
+            end
+        end
+    end)
+    
+    -- التحكم بالواجهة
+    function AutoHuntModule:SetEnabled(state)
+        Enabled = state
+        if state then KillNearest = false end
+        if not state then 
+            if currentTween then currentTween:Cancel() end
+            platform.CFrame = CFrame.new(0, -1000, 0) 
+        end
+    end
+    
+    function AutoHuntModule:SetKillNearest(state)
+        KillNearest = state
+        if state then Enabled = false end
+        if not state then 
+            if currentTween then currentTween:Cancel() end
+            platform.CFrame = CFrame.new(0, -1000, 0) 
+        end
+    end
+    
+    function AutoHuntModule:SetSelectedPlayer(player)
+        if player and not IsValidEnemy(player) then return end
+        SelectedPlayer = player
+        KillNearest = false
+    end
+    
+    function AutoHuntModule:GetSelectedPlayer() return SelectedPlayer end
+    function AutoHuntModule:GetState()
+        return {Enabled = Enabled, KillNearest = KillNearest, SelectedPlayer = SelectedPlayer}
+    end
+    
+    function AutoHuntModule:Stop()
+        if currentTween then currentTween:Cancel() end
+        platform.CFrame = CFrame.new(0, -1000, 0)
+        Enabled = false
+        KillNearest = false
+        SelectedPlayer = nil
+        for _, pl in ipairs(Players:GetPlayers()) do ResetHitbox(pl) end
+    end
+end
+
+return AutoHuntModule
