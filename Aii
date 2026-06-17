@@ -1,9 +1,8 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (MAX SKY HEIGHT + SIZE 500 OVERLOAD + TARGET NEAREST FIRST)
--- version 2.7 (Fixed: Sorted From Nearest To Farthest + Sky Height 55 + My Size 500)
+-- █ ARAKS HUB | AUTO HUNT MODULE (FIXED SKILLS ACTIVATION + SIZE 500)
+-- version 2.8 (Fixed: Tool Equip Delay + Force Activation Loop + Nearest Target First)
 
 local AutoHuntModule = {}
 
--- بيانات التشغيل الأساسية
 AutoHuntModule.Enabled = false
 AutoHuntModule.KillNearest = false
 AutoHuntModule.SelectedPlayer = nil
@@ -15,25 +14,22 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
--- Remotes
 local Net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules.Net
 local RegisterAttack = Net and Net["RE/RegisterAttack"]
 local RegisterHit = Net and Net["RE/RegisterHit"]
 
--- موديول الضربات الفعلي
 local CombatController = nil
 pcall(function()
     CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
 end)
 
-local EnemyBlockSize = 500 -- أقصى حجم هيت بوكس للخصم
-local MyScaleSize = 500 -- حجم شخصيتك 500 لضرب السيرفر كامل
+local EnemyBlockSize = 500 
+local MyScaleSize = 500 
 local TweenSpeed = 350 
 local currentTween = nil
 local GlobalTargetPos = nil
 local CurrentSkillThread = nil 
 
--- قائمة الإحداثيات الممنوعة من ملف ARAKS_Coordinates.txt
 local BlacklistedZones = {
     Vector3.new(-11.26, 19.31, 2827.25),
     Vector3.new(-10.01, 35.51, 2732.26),
@@ -47,21 +43,15 @@ local BlacklistedZones = {
     Vector3.new(-16228.93, 9.09, 375.49)
 }
 
--- فحص هل اللاعب يقع داخل منطقة محظورة
 local function IsInBlacklistedZone(targetPos)
     for _, zonePos in ipairs(BlacklistedZones) do
-        if (targetPos - zonePos).Magnitude <= 60 then 
-            return true
-        end
+        if (targetPos - zonePos).Magnitude <= 60 then return true end
     end
     return false
 end
 
--- نظام تصفية الفرق + فحص كاشف الـ PvP والمناطق المحمية
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
-    if not plr:IsA("Player") then return false end
-    
     local pvpDisabled = false
     pcall(function() pvpDisabled = plr:GetAttribute("PvpDisabled") end)
     if pvpDisabled then return false end 
@@ -72,12 +62,10 @@ local function IsValidEnemy(plr)
     local root = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 or not root then return false end
-    
     if IsInBlacklistedZone(root.Position) then return false end
     
     local myTeam = LocalPlayer.Team
     local targetTeam = plr.Team
-    
     if myTeam and myTeam.Name == "Pirates" then return true end
     if myTeam and myTeam.Name == "Marines" then
         if targetTeam and targetTeam.Name == "Pirates" then return true else return false end
@@ -85,7 +73,6 @@ local function IsValidEnemy(plr)
     return true
 end
 
--- المنصة الأمنية المرتفعة جداً بالهواء لحمايتك من السقوط
 local platform = Instance.new("Part")
 platform.Name = "ARAKS_Platform"
 platform.Size = Vector3.new(35, 1, 35)
@@ -106,16 +93,14 @@ local function IsModuleActive()
     return AutoHuntModule.Enabled or AutoHuntModule.KillNearest or (AutoHuntModule.SelectedPlayer ~= nil)
 end
 
+-- دالة محسنة لضغط الأزرار لضمان الاستجابة مع الحجم الكبير
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.05) 
+    task.wait(0.08) -- زيادة مهلة الضغط قليلاً لتسجيل الضغطة داخل السيرفر
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
--- ==================================================
--- تكبير شخصيتك إلى حجم 500 المدمر بالكامل
--- ==================================================
 local function ScaleLocalPlayer(makeGiant)
     local char = LocalPlayer.Character
     if not char then return end
@@ -149,9 +134,6 @@ local function ScaleLocalPlayer(makeGiant)
     end)
 end
 
--- ==================================================
--- صنع كتلة عملاقة حول الخصم (500)
--- ==================================================
 local function ApplyHitboxSystem(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
     local char = plr.Character
@@ -159,7 +141,6 @@ local function ApplyHitboxSystem(plr)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     
     if rootPart and humanoid and humanoid.Health > 0 then
-        if IsInBlacklistedZone(rootPart.Position) then return end
         pcall(function()
             rootPart.Size = Vector3.new(EnemyBlockSize, EnemyBlockSize, EnemyBlockSize)
             rootPart.CanCollide = false
@@ -182,21 +163,18 @@ local function ResetHitbox(plr)
             rootPart.Size = Vector3.new(2, 2, 2)
             rootPart.CanCollide = true
             rootPart.Transparency = 0
-            rootPart.Material = Enum.Material.Plastic
+            rootPart.Material = Enum.Plastic
         end)
     end
 end
 
 local function ResetAllServerHitboxes()
     ScaleLocalPlayer(false)
-    for _, pl in ipairs(Players:GetPlayers()) do
-        ResetHitbox(pl)
-    end
+    for _, pl in ipairs(Players:GetPlayers()) do ResetHitbox(pl) end
 end
 
 local function Attack(target)
     if not target or not target:FindFirstChild("HumanoidRootPart") then return end
-    if IsInBlacklistedZone(target.HumanoidRootPart.Position) then return end
     if RegisterAttack and RegisterHit then
         pcall(function()
             RegisterAttack:FireServer(0.5)
@@ -206,64 +184,58 @@ local function Attack(target)
 end
 
 -- ==================================================
--- حلقة المهارات التلقائية المستمرة لكل هدف جديد
+-- نظام إطلاق المهارات المطور والمصلح بالكامل (تجهيز قسري + تفعيل دبل)
 -- ==================================================
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
 local function FireTimedSkills(targetPlayer)
-    if CurrentSkillThread then 
-        task.cancel(CurrentSkillThread) 
-        CurrentSkillThread = nil
-    end
+    if CurrentSkillThread then task.cancel(CurrentSkillThread) end
 
     CurrentSkillThread = task.spawn(function()
         while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and IsInBlacklistedZone(targetPlayer.Character.HumanoidRootPart.Position) then break end
             
-            -- السلاح الأول
+            -- [السلاح الأول]
             TapKey(Enum.KeyCode.One)
-            task.wait(0.1)
+            task.wait(0.25) -- وقت مستقطع لضمان نزول السلاح باليد مع الحجم العملاق
+            
             local startTime1 = tick()
-            while tick() - startTime1 < 12 do
+            while tick() - startTime1 < 10 do
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
-                    if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                    if tool then pcall(function() tool:Activate() end) end
-                    task.wait(0.2)
+                    if tool then 
+                        pcall(function() tool:Activate() end) -- تفعيل برمي قسري للأداة
+                    end
+                    task.wait(0.5)
                 end
-                task.wait(0.2)
+                task.wait(0.3)
             end
 
-            -- السلاح الثاني
+            -- [السلاح الثاني]
             TapKey(Enum.KeyCode.Two)
-            task.wait(0.1)
+            task.wait(0.25) -- وقت مستقطع لضمان التجهيز
+            
             local startTime2 = tick()
-            while tick() - startTime2 < 6 do
+            while tick() - startTime2 < 5 do
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
-                    if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                    if tool then pcall(function() tool:Activate() end) end
-                    task.wait(0.2)
+                    if tool then 
+                        pcall(function() tool:Activate() end)
+                    end
+                    task.wait(0.5)
                 end
-                task.wait(0.2)
+                task.wait(0.3)
             end
             task.wait(0.1)
         end
     end)
 end
 
--- ==================================================
--- حركة شاهقة وعالية جداً فوق مستوى المياه (+55 بلوكة للضمان التام)
--- ==================================================
 local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
-    if IsInBlacklistedZone(targetChar.HumanoidRootPart.Position) then return end
-    
     local enemyRoot = targetChar.HumanoidRootPart
-    -- الطيران بارتفاع 55 بلوكة في السماء فوق الخصم لتفادي المياه تماماً
     local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 55, 0)
     local distance = (targetCFrame.Position - myHrp.Position).Magnitude
     
@@ -286,24 +258,16 @@ local function SmoothMoveTo(targetChar, myHrp)
     currentTween = nil
     
     myHrp.Velocity = Vector3.new(0,0,0)
-    myHrp.RotVelocity = Vector3.new(0,0,0)
 end
 
 -- ==================================================
--- اللوب الأساسي: يقتل اللاعب الأقرب أولاً ثم يتجه للأبعد بالتدريج
+-- اللوب الأساسي (من الأقرب للأبعد)
 -- ==================================================
 task.spawn(function()
     while true do
         task.wait()
         
-        if not IsAlive() then 
-            platform.CFrame = CFrame.new(0, -1000, 0)
-            GlobalTargetPos = nil
-            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
-            continue 
-        end
-        
-        if not IsModuleActive() then
+        if not IsAlive() or not IsModuleActive() then
             platform.CFrame = CFrame.new(0, -1000, 0)
             GlobalTargetPos = nil
             if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
@@ -312,7 +276,6 @@ task.spawn(function()
         end
         
         ScaleLocalPlayer(true)
-        
         local targets = {}
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         
@@ -320,103 +283,73 @@ task.spawn(function()
             if AutoHuntModule.KillNearest then
                 local enemies = {}
                 for _, p in pairs(Players:GetPlayers()) do
-                    if IsValidEnemy(p) then 
-                        local eroot = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                        if eroot and not IsInBlacklistedZone(eroot.Position) then
-                            table.insert(enemies, p) 
-                        end
-                    end
+                    if IsValidEnemy(p) then table.insert(enemies, p) end
                 end
                 
-                -- نظام الترتيب من الأقرب إلى الأبعد (Nearest to Farthest)
+                -- فرز من الأقرب للأبعد بدقة بالاعتماد على الماغنيتيود الحالي
                 table.sort(enemies, function(a, b)
                     local distA = (a.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     local distB = (b.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
-                    return distA < distB -- الفرز الصحيح: يبدأ بالأقرب إليك أولاً
+                    return distA < distB
                 end)
-                
                 targets = enemies
             elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
-                local eroot = AutoHuntModule.SelectedPlayer.Character and AutoHuntModule.SelectedPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if eroot and not IsInBlacklistedZone(eroot.Position) then
-                    table.insert(targets, AutoHuntModule.SelectedPlayer)
-                end
+                table.insert(targets, AutoHuntModule.SelectedPlayer)
             end
         end
         
         if #targets > 0 then
             if myHrp then
                 for _, huntTarget in ipairs(targets) do
-                    if CurrentSkillThread then 
-                        task.cancel(CurrentSkillThread) 
-                        CurrentSkillThread = nil 
-                    end
+                    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
                     
                     while IsModuleActive() and IsAlive() and IsValidEnemy(huntTarget) do
                         local enemy = huntTarget.Character
-                        local enemyRoot = enemy and enemy:FindFirstChild("HumanoidRootPart")
-                        local humanoid = enemy and enemy:FindFirstChildOfClass("Humanoid")
+                        local humanoid = enemy and enemy:FindFirstChild("Humanoid")
                         
-                        if enemyRoot and IsInBlacklistedZone(enemyRoot.Position) then break end
-                        
-                        if humanoid and humanoid.Health > 0 and enemyRoot then
+                        if humanoid and humanoid.Health > 0 then
                             ApplyHitboxSystem(huntTarget)
                             SmoothMoveTo(enemy, myHrp)
                             
-                            if (myHrp.Position - enemyRoot.Position).Magnitude < 700 then
+                            -- يبدأ حلقة ضرب المهارات فوراً عند التواجد في النطاق العمودي للكتلة
+                            if (myHrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 750 then
                                 if not CurrentSkillThread then
                                     FireTimedSkills(huntTarget)
                                 end
                             end
                             
                             Attack(enemy)
-                            task.wait(0.2) 
+                            task.wait(0.15) 
                         else
                             break 
                         end
                     end
                     
-                    if CurrentSkillThread then 
-                        task.cancel(CurrentSkillThread) 
-                        CurrentSkillThread = nil 
-                    end
+                    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
                     if not IsModuleActive() or not IsAlive() then break end
                 end
             end
-        else
-            platform.CFrame = CFrame.new(0, -1000, 0)
-            GlobalTargetPos = nil
-            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
         end
     end
 end)
 
--- حلقة التحديث والمراقبة المستمرة للحجوم الكبيرة جداً (500)
 task.spawn(function()
     while true do
         if IsModuleActive() then
             ScaleLocalPlayer(true)
             for _, pl in ipairs(Players:GetPlayers()) do
-                if IsValidEnemy(pl) then 
-                    local eroot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-                    if eroot and not IsInBlacklistedZone(eroot.Position) then
-                        ApplyHitboxSystem(pl) 
-                    end
-                end
+                if IsValidEnemy(pl) then ApplyHitboxSystem(pl) end
             end
         end
         task.wait(0.5)
     end
 end)
 
--- ==================================================
 -- REMOTE HOOK
--- ==================================================
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
-    
     if IsModuleActive() and GlobalTargetPos and not checkcaller() then
         if method == "FireServer" or method == "InvokeServer" then
             local remoteName = tostring(self.Name):lower()
@@ -435,7 +368,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return oldNamecall(self, ...)
 end)
 
--- التحكم بالوظائف الخارجية ومسح التكبير
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
     if state then AutoHuntModule.KillNearest = false else self:Stop() end
