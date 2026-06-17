@@ -159,6 +159,7 @@ local function ApplyHitboxSystem(plr)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     
     if rootPart and humanoid and humanoid.Health > 0 then
+        if IsInBlacklistedZone(rootPart.Position) then return end
         pcall(function()
             rootPart.Size = Vector3.new(EnemyBlockSize, EnemyBlockSize, EnemyBlockSize)
             rootPart.CanCollide = false
@@ -195,6 +196,7 @@ end
 
 local function Attack(target)
     if not target or not target:FindFirstChild("HumanoidRootPart") then return end
+    if IsInBlacklistedZone(target.HumanoidRootPart.Position) then return end
     if RegisterAttack and RegisterHit then
         pcall(function()
             RegisterAttack:FireServer(0.5)
@@ -215,8 +217,11 @@ local function FireTimedSkills(targetPlayer)
 
     CurrentSkillThread = task.spawn(function()
         while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and IsInBlacklistedZone(targetPlayer.Character.HumanoidRootPart.Position) then break end
+            
             -- السلاح الأول
             TapKey(Enum.KeyCode.One)
+            task.wait(0.1)
             local startTime1 = tick()
             while tick() - startTime1 < 12 do
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
@@ -225,13 +230,14 @@ local function FireTimedSkills(targetPlayer)
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                     if tool then pcall(function() tool:Activate() end) end
-                    task.wait(0.6)
+                    task.wait(0.2)
                 end
-                task.wait(0.5)
+                task.wait(0.2)
             end
 
             -- السلاح الثاني
             TapKey(Enum.KeyCode.Two)
+            task.wait(0.1)
             local startTime2 = tick()
             while tick() - startTime2 < 6 do
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
@@ -240,9 +246,9 @@ local function FireTimedSkills(targetPlayer)
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                     if tool then pcall(function() tool:Activate() end) end
-                    task.wait(0.6)
+                    task.wait(0.2)
                 end
-                task.wait(0.5)
+                task.wait(0.2)
             end
             task.wait(0.1)
         end
@@ -254,6 +260,7 @@ end
 -- ==================================================
 local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
+    if IsInBlacklistedZone(targetChar.HumanoidRootPart.Position) then return end
     
     local enemyRoot = targetChar.HumanoidRootPart
     -- الطيران بارتفاع 55 بلوكة في السماء فوق الخصم لتفادي المياه تماماً
@@ -313,7 +320,12 @@ task.spawn(function()
             if AutoHuntModule.KillNearest then
                 local enemies = {}
                 for _, p in pairs(Players:GetPlayers()) do
-                    if IsValidEnemy(p) then table.insert(enemies, p) end
+                    if IsValidEnemy(p) then 
+                        local eroot = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                        if eroot and not IsInBlacklistedZone(eroot.Position) then
+                            table.insert(enemies, p) 
+                        end
+                    end
                 end
                 
                 -- نظام الترتيب من الأقرب إلى الأبعد (Nearest to Farthest)
@@ -325,7 +337,10 @@ task.spawn(function()
                 
                 targets = enemies
             elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
-                table.insert(targets, AutoHuntModule.SelectedPlayer)
+                local eroot = AutoHuntModule.SelectedPlayer.Character and AutoHuntModule.SelectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if eroot and not IsInBlacklistedZone(eroot.Position) then
+                    table.insert(targets, AutoHuntModule.SelectedPlayer)
+                end
             end
         end
         
@@ -339,13 +354,16 @@ task.spawn(function()
                     
                     while IsModuleActive() and IsAlive() and IsValidEnemy(huntTarget) do
                         local enemy = huntTarget.Character
-                        local humanoid = enemy and enemy:FindFirstChild("Humanoid")
+                        local enemyRoot = enemy and enemy:FindFirstChild("HumanoidRootPart")
+                        local humanoid = enemy and enemy:FindFirstChildOfClass("Humanoid")
                         
-                        if humanoid and humanoid.Health > 0 then
+                        if enemyRoot and IsInBlacklistedZone(enemyRoot.Position) then break end
+                        
+                        if humanoid and humanoid.Health > 0 and enemyRoot then
                             ApplyHitboxSystem(huntTarget)
                             SmoothMoveTo(enemy, myHrp)
                             
-                            if (myHrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 700 then
+                            if (myHrp.Position - enemyRoot.Position).Magnitude < 700 then
                                 if not CurrentSkillThread then
                                     FireTimedSkills(huntTarget)
                                 end
@@ -379,7 +397,12 @@ task.spawn(function()
         if IsModuleActive() then
             ScaleLocalPlayer(true)
             for _, pl in ipairs(Players:GetPlayers()) do
-                if IsValidEnemy(pl) then ApplyHitboxSystem(pl) end
+                if IsValidEnemy(pl) then 
+                    local eroot = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+                    if eroot and not IsInBlacklistedZone(eroot.Position) then
+                        ApplyHitboxSystem(pl) 
+                    end
+                end
             end
         end
         task.wait(0.5)
