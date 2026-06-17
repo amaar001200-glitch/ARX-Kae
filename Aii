@@ -1,7 +1,8 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (FIXED ANTI-CRASH & SMOOTH TWEEN)
--- ✅ تم إصلاح كسر السكربت عبر ضبط الـ Remote Hook والـ Targets بشكل صحيح
--- ✅ حركة تدريجية ناعمة (300) تمنع الطرد (Anti-Kick) تماماً
--- ✅ الـ Hitbox البنفسجي (800) شغال على الخصوم فقط لمنع اختفائك
+-- █ ARAKS HUB | AUTO HUNT MODULE (KILL ALL SERVER + SKILLS + VISIBLE HITBOX 800)
+-- ✅ تم حذف نظام الهروب إلى السماء كلياً
+-- ✅ زر "KillNearest" أصبح يجلد السيرفر بالكامل عبر تنقل تدريجي سلس (Tween) لمنع الطرد
+-- ✅ دمج الـ Hitbox البنفسجي المرئي (800) على الأخصام فقط لحماية شخصيتك من الاختفاء
+-- ✅ الحفاظ على شروط الفرق: القراصنة ضد الكل، والبحرية ضد القراصنة فقط
 
 local AutoHuntModule = {}
 
@@ -18,6 +19,7 @@ do
     local RegisterAttack = Net and Net["RE/RegisterAttack"]
     local RegisterHit = Net and Net["RE/RegisterHit"]
     
+    -- موديول اللعبة للضربات الفعلي
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
@@ -29,16 +31,18 @@ do
     local SelectedPlayer = nil
     local SkillBusy = false
     local HitboxSize = 800
-    local TweenSpeed = 300 
+    local TweenSpeed = 320 -- السرعة التدريجية المتزنة والآمنة ضد الحماية
     local currentTween = nil
     
-    -- المتغير السري لمنع انكسار الـ Remote Hook
+    -- المتغير العالمي لتوجيه الضربات بدون كراش
     local GlobalTargetPos = nil
     
+    -- ==================================================
+    -- نظام التحقق وتصفية الأعداء حسب شروط الفرق المعدلة
+    -- ==================================================
     local function IsValidEnemy(plr)
         if not plr or plr == LocalPlayer then return false end
         if not plr:IsA("Player") then return false end
-        if plr.Team == LocalPlayer.Team then return false end
         
         local char = plr.Character
         if not char then return false end
@@ -46,13 +50,31 @@ do
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
         
+        local myTeam = LocalPlayer.Team
+        local targetTeam = plr.Team
+        
+        -- القراصنة يستهدفون الكل
+        if myTeam and myTeam.Name == "Pirates" then
+            return true
+        end
+        
+        -- البحرية تستهدف القراصنة فقط
+        if myTeam and myTeam.Name == "Marines" then
+            if targetTeam and targetTeam.Name == "Pirates" then
+                return true
+            else
+                return false
+            end
+        end
+        
         return true
     end
     
+    -- مفاتيح المهارات
     local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
     local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
     
-    -- المنصة الأمنية
+    -- المنصة الأمنية لمنع السقوط عند التنقل
     local platform = Instance.new("Part")
     platform.Name = "ARAKS_Platform"
     platform.Size = Vector3.new(15, 1, 15)
@@ -91,6 +113,9 @@ do
         task.wait(0.14)
     end
     
+    -- ==================================================
+    -- تطبيق الـ Hitbox المرئي والعملاق بطريقتك الأصلية
+    -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character or plr == LocalPlayer then return end
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -126,6 +151,7 @@ do
         end
     end
 
+    -- دالة جلب كافة أعداء السيرفر الصالحين للجلد الجماعي
     local function GetAllEnemies()
         local enemies = {}
         for _, p in pairs(Players:GetPlayers()) do
@@ -134,17 +160,28 @@ do
         return enemies
     end
     
+    local function GetSessionID()
+        local ok, result = pcall(function()
+            local SendHitsToServer = getrenv()._G.SendHitsToServer
+            local CombatThread = getupvalues(SendHitsToServer)[1]
+            return tostring(LocalPlayer.UserId):sub(2,4)..tostring(CombatThread):sub(11,15)
+        end)
+        return ok and result or ""
+    end
+    
     local function Attack(target)
         if not target or not target:FindFirstChild("HumanoidRootPart") then return end
         if RegisterAttack and RegisterHit then
             pcall(function()
                 RegisterAttack:FireServer(0.5)
-                RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
+                RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, GetSessionID())
             end)
         end
     end
     
-    -- نظام الحركة التدريجية الآمنة مع حماية المنصة لمنع السقوط
+    -- ==================================================
+    -- نظام الحركة التدريجية (Tween) لحماية الحساب من الطرد
+    -- ==================================================
     local function SmoothMoveTo(targetChar, myHrp)
         if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
         
@@ -174,7 +211,7 @@ do
         myHrp.RotVelocity = Vector3.zero
     end
     
-    -- لوب المهارات التلقائي الآمن
+    -- لوب المهارات التلقائي
     task.spawn(function()
         while true do
             task.wait(0.3)
@@ -213,7 +250,7 @@ do
         end
     end)
     
-    -- لوب الحركة والجلد الرئيسي (تم حمايته من الكراش والتعليق)
+    -- لوب القتال والجلد الجماعي الرئيسي (شامل للسيرفر بالكامل بالتنقل التدريجي)
     task.spawn(function()
         while true do
             task.wait()
@@ -232,7 +269,7 @@ do
             
             local targets = {}
             if KillNearest then
-                targets = GetAllEnemies()
+                targets = GetAllEnemies() -- يجلد السيرفر بالكامل
             elseif Enabled and SelectedPlayer and IsValidEnemy(SelectedPlayer) then
                 table.insert(targets, SelectedPlayer)
             end
@@ -261,7 +298,7 @@ do
         end
     end)
     
-    -- تثبيت دوري للهيت بوكس للأخصام
+    -- تحديث دوري للهيت بوكس للأخصام لضمان استقرار الاحتساب
     task.spawn(function()
         while task.wait(0.5) do
             if IsModuleActive() then
@@ -273,7 +310,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK (توجيه الضربات المدمج والمحمي من الكراش)
+    -- REMOTE HOOK (توجيه ريموتات الضربات والمهارات تلقائياً)
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -298,7 +335,7 @@ do
         return oldNamecall(self, ...)
     end)
     
-    -- ربط أزرار الـ الواجهة (تعديل مباشر بدون كسر التعريفات)
+    -- ربط وضبط أزرار الواجهة (الـ UI الثلاثة) دون كسر أي تعريف
     function AutoHuntModule:SetEnabled(state)
         Enabled = state
         if state then KillNearest = false end
