@@ -1,9 +1,9 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (FULLY FIXED FOR LOADSTRING / GITHUB)
--- version 1.5 (Anti-Crash + Visible Hitbox 800 + Clean Module Return)
+-- █ ARAKS HUB | AUTO HUNT MODULE (FOCUS KILL + FIXED HITBOX & SKILLS)
+-- version 1.6 (Fixed: Strict Target Focus + Insta Hitbox + Sync Skills)
 
 local AutoHuntModule = {}
 
--- بيانات التشغيل الأساسية (خارجية لتراها الأزرار دائماً)
+-- بيانات التشغيل الأساسية
 AutoHuntModule.Enabled = false
 AutoHuntModule.KillNearest = false
 AutoHuntModule.SelectedPlayer = nil
@@ -20,21 +20,18 @@ local Net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Mo
 local RegisterAttack = Net and Net["RE/RegisterAttack"]
 local RegisterHit = Net and Net["RE/RegisterHit"]
 
--- موديول الضربات الأصلي للعبة
+-- موديول الضربات الفعلي
 local CombatController = nil
 pcall(function()
     CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
 end)
 
-local SkillBusy = false
 local HitboxSize = 800
 local TweenSpeed = 320 
 local currentTween = nil
 local GlobalTargetPos = nil
 
--- ==================================================
 -- نظام تصفية الفرق (قراصنة ضد الكل / بحرية ضد قراصنة)
--- ==================================================
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
     if not plr:IsA("Player") then return false end
@@ -87,22 +84,11 @@ end
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.018)
+    task.wait(0.015)
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
-local function UseSkill(skill)
-    if not IsAlive() then return end
-    TapKey(skill)
-    task.wait(0.04)
-    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-    if tool then pcall(function() tool:Activate() end) end
-    task.wait(0.14)
-end
-
--- ==================================================
--- تطبيق الـ Hitbox البنفسجي المرئي وعملاق (800)
--- ==================================================
+-- تطبيق الهيت بوكس وتكبير الضرر فوراً (Instant)
 local function ApplyHitboxSystem(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
     local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -117,9 +103,7 @@ local function ApplyHitboxSystem(plr)
             rootPart.Material = Enum.Material.ForceField
             
             if CombatController and type(CombatController.runHitDetection) == "function" then
-                task.spawn(function()
-                    pcall(function() CombatController.runHitDetection(plr.Character) end)
-                end)
+                CombatController.runHitDetection(plr.Character)
             end
         end)
     end
@@ -156,7 +140,28 @@ local function Attack(target)
     end
 end
 
--- حركة تدريجية ناعمة وآمنة
+-- مهارات مدمجة لضمان الجلد المتزامن
+local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
+
+local function FireAllSkills()
+    task.spawn(function()
+        for _, slot in ipairs(HotbarKeys) do
+            if not IsAlive() or not IsModuleActive() then break end
+            TapKey(slot)
+            task.wait(0.05)
+            for _, skill in ipairs(SkillKeys) do
+                if not IsAlive() or not IsModuleActive() then break end
+                TapKey(skill)
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then pcall(function() tool:Activate() end) end
+                task.wait(0.05)
+            end
+        end
+    end)
+end
+
+-- حركة تدريجية ناعمة ومحمية مع ربط المنصة باللاعب
 local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
     
@@ -187,50 +192,12 @@ local function SmoothMoveTo(targetChar, myHrp)
 end
 
 -- ==================================================
--- LOOPS التشغيل (تشتغل بشكل مستقل كليا لمنع الكراش)
+-- اللوب الرئيسي للجلد: يركز على الخصم حتى يموت تماماً
 -- ==================================================
-
-task.spawn(function()
-    while true do
-        task.wait(0.3)
-        if not IsAlive() or not IsModuleActive() then continue end
-        
-        local targets = {}
-        if AutoHuntModule.KillNearest then
-            targets = GetAllEnemies()
-        elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
-            table.insert(targets, AutoHuntModule.SelectedPlayer)
-        end
-        
-        for _, target in ipairs(targets) do
-            if target and target.Character then
-                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
-                if myHrp and tHrp and (myHrp.Position - tHrp.Position).Magnitude <= 70 then
-                    if not SkillBusy then
-                        SkillBusy = true
-                        pcall(function()
-                            for _, slot in ipairs(HotbarKeys) do
-                                if not IsAlive() or not IsModuleActive() then break end
-                                TapKey(slot)
-                                task.wait(0.1)
-                                for _, skill in ipairs(SkillKeys) do
-                                    if not IsAlive() or not IsModuleActive() then break end
-                                    UseSkill(skill)
-                                end
-                            end
-                        end)
-                        SkillBusy = false
-                    end
-                end
-            end
-        end
-    end
-end)
-
 task.spawn(function()
     while true do
         task.wait()
+        
         if not IsAlive() then 
             platform.CFrame = CFrame.new(0, -1000, 0)
             GlobalTargetPos = nil
@@ -255,17 +222,28 @@ task.spawn(function()
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
                 for _, huntTarget in ipairs(targets) do
-                    if not IsModuleActive() or not IsAlive() then break end
-                    if huntTarget and huntTarget.Character then
+                    -- التحقق من صلاحية الهدف واستمراره على قيد الحياة قبل وبدء الجلد
+                    while IsModuleActive() and IsAlive() and IsValidEnemy(huntTarget) do
                         local enemy = huntTarget.Character
-                        local humanoid = enemy:FindFirstChild("Humanoid")
+                        local humanoid = enemy and enemy:FindFirstChild("Humanoid")
+                        
                         if humanoid and humanoid.Health > 0 then
+                            -- 1. تكبير الهيت بوكس فوراً لضمان حساب الضرر
                             ApplyHitboxSystem(huntTarget)
+                            
+                            -- 2. التحرك نحو الهدف وثبيته
                             SmoothMoveTo(enemy, hrp)
+                            
+                            -- 3. تفعيل المهارات والضرب العادي بشكل متزامن
+                            FireAllSkills()
                             Attack(enemy)
-                            task.wait(0.05) 
+                            
+                            task.wait(0.05) -- انتظار قصير لتكرار الضرب على نفس اللاعب
+                        else
+                            break -- إذا مات، اخرج من هاد اللوب الـ وحول على اللي بعده
                         end
                     end
+                    if not IsModuleActive() or not IsAlive() then break end
                 end
             end
         else
@@ -275,8 +253,9 @@ task.spawn(function()
     end
 end)
 
+-- تحديث دوري للهيت بوكس للأخصام لضمان البقاء مكبرين
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(0.4) do
         if IsModuleActive() then
             for _, pl in ipairs(Players:GetPlayers()) do
                 if IsValidEnemy(pl) then ApplyHitboxSystem(pl) end
@@ -286,7 +265,7 @@ task.spawn(function()
 end)
 
 -- ==================================================
--- REMOTE HOOK (تأمين إرسال المهارات لعدم تعليق اللود سترينج)
+-- REMOTE HOOK (تأمين وتوجيه المقذوفات والمهارات)
 -- ==================================================
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -312,7 +291,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- ==================================================
--- دوال التحكم الخارجية التابعة للجدول (الواجهة تستدعيها هنا مباشرة)
+-- دوال التحكم الخارجية للواجهة
 -- ==================================================
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
