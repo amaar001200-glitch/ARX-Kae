@@ -1,5 +1,5 @@
--- █ ARAKS HUB | AUTO HUNT MODULE (FOCUS KILL + FIXED HITBOX & SKILLS)
--- version 1.6 (Fixed: Strict Target Focus + Insta Hitbox + Sync Skills)
+-- █ ARAKS HUB | AUTO HUNT MODULE (STRICT STATE FIXED)
+-- version 1.8 (Fixed: Instant Turn-Off + Safe Hitbox Toggle + Balanced Skill Delay)
 
 local AutoHuntModule = {}
 
@@ -84,11 +84,11 @@ end
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.015)
+    task.wait(0.03) 
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
--- تطبيق الهيت بوكس وتكبير الضرر فوراً (Instant)
+-- تطبيق الهيت بوكس وتكبير الضرر على الأخصام فقط (شخصيتك محمية 100%)
 local function ApplyHitboxSystem(plr)
     if not plr or not plr.Character or plr == LocalPlayer then return end
     local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -109,8 +109,9 @@ local function ApplyHitboxSystem(plr)
     end
 end
 
+-- إرجاع الحجم الطبيعي وإزالة المؤثرات البنفسجية فوراً عند الإطفاء
 local function ResetHitbox(plr)
-    if not plr or not plr.Character then return end
+    if not plr or not plr.Character or plr == LocalPlayer then return end
     local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
     if rootPart then
         pcall(function()
@@ -119,6 +120,12 @@ local function ResetHitbox(plr)
             rootPart.Transparency = 0
             rootPart.Material = Enum.Material.Plastic
         end)
+    end
+end
+
+local function ResetAllServerHitboxes()
+    for _, pl in ipairs(Players:GetPlayers()) do
+        ResetHitbox(pl)
     end
 end
 
@@ -140,7 +147,7 @@ local function Attack(target)
     end
 end
 
--- مهارات مدمجة لضمان الجلد المتزامن
+-- مهارات مدمجة موزونة وهادئة
 local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
 
@@ -149,19 +156,19 @@ local function FireAllSkills()
         for _, slot in ipairs(HotbarKeys) do
             if not IsAlive() or not IsModuleActive() then break end
             TapKey(slot)
-            task.wait(0.05)
+            task.wait(0.25) 
             for _, skill in ipairs(SkillKeys) do
                 if not IsAlive() or not IsModuleActive() then break end
                 TapKey(skill)
                 local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                 if tool then pcall(function() tool:Activate() end) end
-                task.wait(0.05)
+                task.wait(0.3) 
             end
         end
     end)
 end
 
--- حركة تدريجية ناعمة ومحمية مع ربط المنصة باللاعب
+-- حركة تدريجية ناعمة ومحمية
 local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
     
@@ -222,25 +229,18 @@ task.spawn(function()
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
                 for _, huntTarget in ipairs(targets) do
-                    -- التحقق من صلاحية الهدف واستمراره على قيد الحياة قبل وبدء الجلد
                     while IsModuleActive() and IsAlive() and IsValidEnemy(huntTarget) do
                         local enemy = huntTarget.Character
                         local humanoid = enemy and enemy:FindFirstChild("Humanoid")
                         
                         if humanoid and humanoid.Health > 0 then
-                            -- 1. تكبير الهيت بوكس فوراً لضمان حساب الضرر
                             ApplyHitboxSystem(huntTarget)
-                            
-                            -- 2. التحرك نحو الهدف وثبيته
                             SmoothMoveTo(enemy, hrp)
-                            
-                            -- 3. تفعيل المهارات والضرب العادي بشكل متزامن
                             FireAllSkills()
                             Attack(enemy)
-                            
-                            task.wait(0.05) -- انتظار قصير لتكرار الضرب على نفس اللاعب
+                            task.wait(0.1) 
                         else
-                            break -- إذا مات، اخرج من هاد اللوب الـ وحول على اللي بعده
+                            break 
                         end
                     end
                     if not IsModuleActive() or not IsAlive() then break end
@@ -253,14 +253,19 @@ task.spawn(function()
     end
 end)
 
--- تحديث دوري للهيت بوكس للأخصام لضمان البقاء مكبرين
+-- ==================================================
+-- لوب الهيت بوكس الذكي: يكبر فقط عند التشغيل، ويصغّر فوراً عند الإطفاء
+-- ==================================================
 task.spawn(function()
-    while task.wait(0.4) do
+    while true do
         if IsModuleActive() then
             for _, pl in ipairs(Players:GetPlayers()) do
-                if IsValidEnemy(pl) then ApplyHitboxSystem(pl) end
+                if IsValidEnemy(pl) then 
+                    ApplyHitboxSystem(pl) 
+                end
             end
         end
+        task.wait(0.5)
     end
 end)
 
@@ -291,25 +296,29 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- ==================================================
--- دوال التحكم الخارجية للواجهة
+-- دوال التحكم الخارجية للواجهة (تم ربط الإطفاء الكامل بها)
 -- ==================================================
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
-    if state then AutoHuntModule.KillNearest = false end
-    if not state then 
+    if state then 
+        AutoHuntModule.KillNearest = false 
+    else
         if currentTween then currentTween:Cancel() end
         platform.CFrame = CFrame.new(0, -1000, 0) 
         GlobalTargetPos = nil
+        ResetAllServerHitboxes() -- إطفاء فوري وتصغير الأحجام
     end
 end
 
 function AutoHuntModule:SetKillNearest(state)
     AutoHuntModule.KillNearest = state
-    if state then AutoHuntModule.Enabled = false end
-    if not state then 
+    if state then 
+        AutoHuntModule.Enabled = false 
+    else
         if currentTween then currentTween:Cancel() end
         platform.CFrame = CFrame.new(0, -1000, 0) 
         GlobalTargetPos = nil
+        ResetAllServerHitboxes() -- إطفاء فوري وتصغير الأحجام
     end
 end
 
@@ -317,6 +326,13 @@ function AutoHuntModule:SetSelectedPlayer(player)
     if player and not IsValidEnemy(player) then return end
     AutoHuntModule.SelectedPlayer = player
     AutoHuntModule.KillNearest = false
+    if not player then
+        ResetAllServerHitboxes()
+    end
+end
+
+function AutoHuntModule:ResetAllHitboxes()
+    ResetAllServerHitboxes()
 end
 
 function AutoHuntModule:GetSelectedPlayer() 
@@ -338,7 +354,7 @@ function AutoHuntModule:Stop()
     AutoHuntModule.KillNearest = false
     AutoHuntModule.SelectedPlayer = nil
     GlobalTargetPos = nil
-    for _, pl in ipairs(Players:GetPlayers()) do ResetHitbox(pl) end
+    ResetAllServerHitboxes() -- تنظيف السيرفر بالكامل عند الإيقاف المفاجئ
 end
 
 return AutoHuntModule
