@@ -1,5 +1,5 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (FIXED SKILLS ACTIVATION + SIZE 500)
--- version 2.8 (Fixed: Tool Equip Delay + Force Activation Loop + Nearest Target First)
+-- version 2.8.5 (Fixed: Melee Damage, Absolute Distance Sorting, PVP Check Bypass Safety)
 
 local AutoHuntModule = {}
 
@@ -52,8 +52,12 @@ end
 
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
+    
+    -- فحص حماية القتال المغلق (PvpDisabled) بشكل فوري صارم لمنع تتبعهم
     local pvpDisabled = false
-    pcall(function() pvpDisabled = plr:GetAttribute("PvpDisabled") end)
+    pcall(function() 
+        pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false
+    end)
     if pvpDisabled then return false end 
     
     local char = plr.Character
@@ -93,11 +97,10 @@ local function IsModuleActive()
     return AutoHuntModule.Enabled or AutoHuntModule.KillNearest or (AutoHuntModule.SelectedPlayer ~= nil)
 end
 
--- دالة محسنة لضغط الأزرار لضمان الاستجابة مع الحجم الكبير
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.08) -- زيادة مهلة الضغط قليلاً لتسجيل الضغطة داخل السيرفر
+    task.wait(0.08)
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
@@ -179,13 +182,12 @@ local function Attack(target)
         pcall(function()
             RegisterAttack:FireServer(0.5)
             RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
+            -- [حقن ضرر إضافي مخصص للأساليب والفواكه لفرض الضرر مباشرة على المربع]
+            RegisterHit:FireServer(target.HumanoidRootPart, {}, "Melee", "")
         end)
     end
 end
 
--- ==================================================
--- نظام إطلاق المهارات المطور والمصلح بالكامل (تجهيز قسري + تفعيل دبل)
--- ==================================================
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
 local function FireTimedSkills(targetPlayer)
     if CurrentSkillThread then task.cancel(CurrentSkillThread) end
@@ -193,9 +195,8 @@ local function FireTimedSkills(targetPlayer)
     CurrentSkillThread = task.spawn(function()
         while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
             
-            -- [السلاح الأول]
             TapKey(Enum.KeyCode.One)
-            task.wait(0.25) -- وقت مستقطع لضمان نزول السلاح باليد مع الحجم العملاق
+            task.wait(0.25)
             
             local startTime1 = tick()
             while tick() - startTime1 < 10 do
@@ -204,16 +205,15 @@ local function FireTimedSkills(targetPlayer)
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                     if tool then 
-                        pcall(function() tool:Activate() end) -- تفعيل برمي قسري للأداة
+                        pcall(function() tool:Activate() end)
                     end
                     task.wait(0.5)
                 end
                 task.wait(0.3)
             end
 
-            -- [السلاح الثاني]
             TapKey(Enum.KeyCode.Two)
-            task.wait(0.25) -- وقت مستقطع لضمان التجهيز
+            task.wait(0.25)
             
             local startTime2 = tick()
             while tick() - startTime2 < 5 do
@@ -261,7 +261,7 @@ local function SmoothMoveTo(targetChar, myHrp)
 end
 
 -- ==================================================
--- اللوب الأساسي (من الأقرب للأبعد)
+-- اللوب الأساسي الديناميكي (فرز لحظي مستمر لمنع تخطي الأقرب)
 -- ==================================================
 task.spawn(function()
     while true do
@@ -276,8 +276,8 @@ task.spawn(function()
         end
         
         ScaleLocalPlayer(true)
-        local targets = {}
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local huntTarget = nil
         
         if myHrp then
             if AutoHuntModule.KillNearest then
@@ -286,55 +286,39 @@ task.spawn(function()
                     if IsValidEnemy(p) then table.insert(enemies, p) end
                 end
                 
-                -- فرز من الأقرب للأبعد بدقة بالاعتماد على الماغنيتيود الحالي
+                -- فرز ديناميكي لحظي لاختيار الهدف الأقرب الفعلي حالياً
                 table.sort(enemies, function(a, b)
                     local distA = (a.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     local distB = (b.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     return distA < distB
                 end)
-                targets = enemies
+                huntTarget = enemies[1]
             elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
-                table.insert(targets, AutoHuntModule.SelectedPlayer)
+                huntTarget = AutoHuntModule.SelectedPlayer
             end
         end
         
-        if #targets > 0 then
-            if myHrp then
-                for _, huntTarget in ipairs(targets) do
-                    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
-                    
-                    while IsModuleActive() and IsAlive() and IsValidEnemy(huntTarget) do
-                        local enemy = huntTarget.Character
-                        local humanoid = enemy and enemy:FindFirstChild("Humanoid")
-                        
-                        if humanoid and humanoid.Health > 0 then
-                            ApplyHitboxSystem(huntTarget)
-                            SmoothMoveTo(enemy, myHrp)
-                            
-                            -- يبدأ حلقة ضرب المهارات فوراً عند التواجد في النطاق العمودي للكتلة
-                            if (myHrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 750 then
-                                if not CurrentSkillThread then
-                                    FireTimedSkills(huntTarget)
-                                end
-                            end
-                            
-                            Attack(enemy)
-                            
-                            -- [[ الزيادة المضافة فقط لحساب ضرر الأساليب والفواكه على المربع قسرياً ]]
-                            if RegisterHit and enemy:FindFirstChild("HumanoidRootPart") then
-                                pcall(function() RegisterHit:FireServer(enemy.HumanoidRootPart, {}, nil, "") end)
-                            end
-                            
-                            task.wait(0.15) 
-                        else
-                            break 
-                        end
+        if huntTarget and myHrp then
+            local enemy = huntTarget.Character
+            local humanoid = enemy and enemy:FindFirstChild("Humanoid")
+            
+            if humanoid and humanoid.Health > 0 and IsValidEnemy(huntTarget) then
+                ApplyHitboxSystem(huntTarget)
+                SmoothMoveTo(enemy, myHrp)
+                
+                if (myHrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 750 then
+                    if not CurrentSkillThread then
+                        FireTimedSkills(huntTarget)
                     end
-                    
-                    if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
-                    if not IsModuleActive() or not IsAlive() then break end
                 end
+                
+                Attack(enemy)
+                task.wait(0.15) 
+            else
+                if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
             end
+        else
+            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
         end
     end
 end)
