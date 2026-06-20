@@ -1,8 +1,7 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION [UPDATED 2026]
--- ✅ تم تحديث المسارات والدالات بناءً على آخر فحص للموديل والريموتات
+-- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION
+-- ✅ تم إصلاح مشكلة ضياع الضربات وتوجيه الريموتات الجديدة بالكامل
 -- ✅ تكبير حجم الـ Hitbox السري والشفاف إلى 95 لجلد عنيف
--- ✅ المدى 1000 متر حقيقي وبدون تجميد
--- ✅ تم إلغاء الخط وتلوين جسم الخصم بالبنفسجي (Chams) ليظهر من خلف الجدران
+-- ✅ المدى 1000 متر حقيقي وبدون تجميد للخصوم
 
 local AimbotModule = {}
 
@@ -13,7 +12,6 @@ do
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     
-    -- استدعاء موديول اللعبة الجديد
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
@@ -28,7 +26,6 @@ do
         Prediction = 0.07,   
     }
 
-    -- نظام التحقق من العدو
     local function IsValidEnemy(plr)
         if not plr or plr == player then return false end
         if not plr:IsA("Player") then return false end
@@ -64,7 +61,6 @@ do
     local CurrentTargetPos = nil
     local lastTarget = nil
     
-    -- مظهر نيون بنفسجي
     local PurpleChams = Instance.new("BoxHandleAdornment")
     PurpleChams.Size = Vector3.new(4, 6, 4)
     PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
@@ -74,7 +70,6 @@ do
     PurpleChams.Visible = false
     PurpleChams.Parent = game:GetService("CoreGui")
     
-    -- الحصول على أقرب لاعب
     local function GetNearestEnemy()
         local char = player.Character
         if not char then return nil end
@@ -103,7 +98,6 @@ do
         return nearest
     end
     
-    -- تطبيق الـ Hitbox المطور والربط مع الدالات الجديدة
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
         
@@ -120,7 +114,7 @@ do
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
-                -- التحديث: استخدام دالة Attack المتاحة في التحديث الجديد بدلاً من runHitDetection
+                -- استخدام نظام الـ Attack الجديد المتوافق مع التحديث
                 if CombatController and type(CombatController.Attack) == "function" then
                     task.spawn(function()
                         pcall(function() CombatController.Attack(plr.Character) end)
@@ -148,7 +142,6 @@ do
         end
     end
     
-    -- LOOP التحديث والـ Prediction
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
             if lastTarget then
@@ -204,7 +197,7 @@ do
         end
     end)
     
-    -- SILENT AIM HOOK
+    -- SILENT AIM (تعديل الـ Index التقليدي)
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
@@ -218,29 +211,43 @@ do
         return oldIndex(self, index)
     end)
     
-    -- REMOTE HOOK (تعديل كامل لاستهداف ريموتات الضربات الجديدة المكتشفة في الفحص)
+    -- نظام الـ Namecall المطور والمطابق لريموتات الضربات الجديدة
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         local method = getnamecallmethod()
         local args = {...}
         
-        if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
-            if method == "FireServer" or method == "InvokeServer" then
-                local remoteName = tostring(self.Name)
-                
-                -- استهداف مباشر للريموتات الجديدة التي ظهرت في التقرير لضمان تسجيل الضرر
-                if remoteName == "RegisterHit" or remoteName == "RegisterAttack" or remoteName == "SegmentHit" or remoteName == "EggsplosiveEggDamage" then
+        if getgenv().AimbotActive and not checkcaller() then
+            local remoteName = tostring(self.Name)
+            
+            if remoteName == "RegisterAttack" or remoteName == "PlayAttackStartEffect" then
+                if CurrentTargetPos then
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
                             args[i] = CurrentTargetPos
-                        elseif typeof(v) == "Instance" and v:IsA("Model") and v:FindFirstChildOfClass("Humanoid") then
-                            -- إذا كان الريموت يتطلب جسم الخصم مباشرة
-                            if CurrentTarget and CurrentTarget.Character then
-                                args[i] = CurrentTarget.Character
-                            end
                         end
                     end
                     return oldNamecall(self, unpack(args))
+                end
+            end
+            
+            if remoteName == "RegisterHit" or remoteName == "SegmentHit" or remoteName == "EggsplosiveEggDamage" or remoteName == "OnItemServerHit" then
+                if CurrentTarget and CurrentTarget.Character then
+                    local targetHrp = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
+                    if targetHrp then
+                        for i, v in ipairs(args) do
+                            if typeof(v) == "Vector3" then
+                                args[i] = targetHrp.Position
+                            elseif typeof(v) == "Instance" and (v:IsA("Model") or v:IsA("BasePart")) then
+                                if v:IsDescendantOf(game.Workspace) and not v:IsDescendantOf(player.Character) then
+                                    if v.Name == "HumanoidRootPart" or v:FindFirstChildOfClass("Humanoid") or v.Parent:FindFirstChildOfClass("Humanoid") then
+                                        args[i] = targetHrp
+                                    end
+                                end
+                            end
+                        end
+                        return oldNamecall(self, unpack(args))
+                    end
                 end
             end
         end
@@ -269,7 +276,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] UPDATED SUCCESSFULLY FOR NEW CONTROLLER & REMOTES!")
+    print("[ARAKS HUB] COMBAT DIRECTION FIXED - الضربات الآن تتبع التتابع الجديد بنجاح!")
 end
 
 return AimbotModule
