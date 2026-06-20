@@ -1,5 +1,5 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (FIXED SKILLS ACTIVATION + SIZE 500)
--- version 2.8.5 (Fixed: Melee Damage, Absolute Distance Sorting, PVP Check Bypass Safety)
+-- version 2.8.7 (Fixed: Server Freezing, Skill Lock, Absolute Zone Filter & Melee Hitbox Damage)
 
 local AutoHuntModule = {}
 
@@ -29,6 +29,7 @@ local TweenSpeed = 350
 local currentTween = nil
 local GlobalTargetPos = nil
 local CurrentSkillThread = nil 
+local lastHitTick = 0 -- لمنع تجميد السيرفر
 
 local BlacklistedZones = {
     Vector3.new(-11.26, 19.31, 2827.25),
@@ -45,7 +46,7 @@ local BlacklistedZones = {
 
 local function IsInBlacklistedZone(targetPos)
     for _, zonePos in ipairs(BlacklistedZones) do
-        if (targetPos - zonePos).Magnitude <= 60 then return true end
+        if (targetPos - zonePos).Magnitude <= 120 then return true end
     end
     return false
 end
@@ -53,7 +54,6 @@ end
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
     
-    -- فحص حماية القتال المغلق (PvpDisabled) بشكل فوري صارم لمنع تتبعهم
     local pvpDisabled = false
     pcall(function() 
         pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false
@@ -182,8 +182,13 @@ local function Attack(target)
         pcall(function()
             RegisterAttack:FireServer(0.5)
             RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
-            -- [حقن ضرر إضافي مخصص للأساليب والفواكه لفرض الضرر مباشرة على المربع]
-            RegisterHit:FireServer(target.HumanoidRootPart, {}, "Melee", "")
+            
+            -- حماية الوقت المستقطع لمنع تجميد اللعبة والسكلات (Cooldown آمن وسريع)
+            if tick() - lastHitTick > 0.15 then
+                lastHitTick = tick()
+                RegisterHit:FireServer(target.HumanoidRootPart, {{target, target.HumanoidRootPart}})
+                RegisterHit:FireServer(target.HumanoidRootPart, {}, "Melee", "")
+            end
         end)
     end
 end
@@ -236,6 +241,12 @@ end
 local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
     local enemyRoot = targetChar.HumanoidRootPart
+    
+    if IsInBlacklistedZone(enemyRoot.Position) then 
+        if currentTween then currentTween:Cancel() end
+        return 
+    end
+
     local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 55, 0)
     local distance = (targetCFrame.Position - myHrp.Position).Magnitude
     
@@ -261,7 +272,7 @@ local function SmoothMoveTo(targetChar, myHrp)
 end
 
 -- ==================================================
--- اللوب الأساسي الديناميكي (فرز لحظي مستمر لمنع تخطي الأقرب)
+-- اللوب الأساسي الديناميكي
 -- ==================================================
 task.spawn(function()
     while true do
@@ -283,10 +294,11 @@ task.spawn(function()
             if AutoHuntModule.KillNearest then
                 local enemies = {}
                 for _, p in pairs(Players:GetPlayers()) do
-                    if IsValidEnemy(p) then table.insert(enemies, p) end
+                    if IsValidEnemy(p) then 
+                        table.insert(enemies, p) 
+                    end
                 end
                 
-                -- فرز ديناميكي لحظي لاختيار الهدف الأقرب الفعلي حالياً
                 table.sort(enemies, function(a, b)
                     local distA = (a.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     local distB = (b.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
