@@ -1,5 +1,5 @@
 -- █ ARAKS HUB | AUTO HUNT MODULE (FIXED SKILLS ACTIVATION + SIZE 500)
--- version 2.9 (Fixed: Melee & Fruit M1 Memory Drop + Forced Remote Injection)
+-- version 2.8 (Fixed: Tool Equip Delay + Force Activation Loop + Nearest Target First)
 
 local AutoHuntModule = {}
 
@@ -93,10 +93,11 @@ local function IsModuleActive()
     return AutoHuntModule.Enabled or AutoHuntModule.KillNearest or (AutoHuntModule.SelectedPlayer ~= nil)
 end
 
+-- دالة محسنة لضغط الأزرار لضمان الاستجابة مع الحجم الكبير
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.08)
+    task.wait(0.08) -- زيادة مهلة الضغط قليلاً لتسجيل الضغطة داخل السيرفر
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
@@ -182,6 +183,9 @@ local function Attack(target)
     end
 end
 
+-- ==================================================
+-- نظام إطلاق المهارات المطور والمصلح بالكامل (تجهيز قسري + تفعيل دبل)
+-- ==================================================
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
 local function FireTimedSkills(targetPlayer)
     if CurrentSkillThread then task.cancel(CurrentSkillThread) end
@@ -189,8 +193,9 @@ local function FireTimedSkills(targetPlayer)
     CurrentSkillThread = task.spawn(function()
         while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
             
+            -- [السلاح الأول]
             TapKey(Enum.KeyCode.One)
-            task.wait(0.25)
+            task.wait(0.25) -- وقت مستقطع لضمان نزول السلاح باليد مع الحجم العملاق
             
             local startTime1 = tick()
             while tick() - startTime1 < 10 do
@@ -199,15 +204,16 @@ local function FireTimedSkills(targetPlayer)
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                     if tool then 
-                        pcall(function() tool:Activate() end)
+                        pcall(function() tool:Activate() end) -- تفعيل برمي قسري للأداة
                     end
                     task.wait(0.5)
                 end
                 task.wait(0.3)
             end
 
+            -- [السلاح الثاني]
             TapKey(Enum.KeyCode.Two)
-            task.wait(0.25)
+            task.wait(0.25) -- وقت مستقطع لضمان التجهيز
             
             local startTime2 = tick()
             while tick() - startTime2 < 5 do
@@ -254,6 +260,9 @@ local function SmoothMoveTo(targetChar, myHrp)
     myHrp.Velocity = Vector3.new(0,0,0)
 end
 
+-- ==================================================
+-- اللوب الأساسي (من الأقرب للأبعد)
+-- ==================================================
 task.spawn(function()
     while true do
         task.wait()
@@ -277,6 +286,7 @@ task.spawn(function()
                     if IsValidEnemy(p) then table.insert(enemies, p) end
                 end
                 
+                -- فرز من الأقرب للأبعد بدقة بالاعتماد على الماغنيتيود الحالي
                 table.sort(enemies, function(a, b)
                     local distA = (a.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     local distB = (b.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
@@ -301,6 +311,7 @@ task.spawn(function()
                             ApplyHitboxSystem(huntTarget)
                             SmoothMoveTo(enemy, myHrp)
                             
+                            -- يبدأ حلقة ضرب المهارات فوراً عند التواجد في النطاق العمودي للكتلة
                             if (myHrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 750 then
                                 if not CurrentSkillThread then
                                     FireTimedSkills(huntTarget)
@@ -309,11 +320,9 @@ task.spawn(function()
                             
                             Attack(enemy)
                             
-                            -- [تعديل V2.9 قسري لحساب ضرر الأساليب والفواكه المكبوتة في الذاكرة]
+                            -- [[ الزيادة المضافة فقط لحساب ضرر الأساليب والفواكه على المربع قسرياً ]]
                             if RegisterHit and enemy:FindFirstChild("HumanoidRootPart") then
-                                pcall(function()
-                                    RegisterHit:FireServer(enemy.HumanoidRootPart, {}, nil, "")
-                                end)
+                                pcall(function() RegisterHit:FireServer(enemy.HumanoidRootPart, {}, nil, "") end)
                             end
                             
                             task.wait(0.15) 
