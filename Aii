@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (ULTRA SECURITY PVP FILTER + FAST COMBOS)
--- version 2.9.1 (Fixed: Advanced Team Checks, Fight Cache Track, Low Hitbox)
+-- █ ARAKS HUB | AUTO HUNT MODULE (FIXED MARINES PVP LOGIC)
+-- version 2.9.2 (Fixed: Team Drop During Combat, Continuous Smooth Tween)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -31,7 +31,6 @@ local GlobalTargetPos = nil
 local CurrentSkillThread = nil 
 local lastHitTick = 0 
 
--- كاش لتسجيل أوقات قتال اللاعبين لحمايتهم وملاحقتهم بدقة
 local FightCache = {}
 
 local BlacklistedZones = {
@@ -55,13 +54,11 @@ local function IsInBlacklistedZone(targetPos)
     return false
 end
 
--- دالة الحصول على حالة PVP للاعب بدقة مع الكاش
 local function GetPlayerState(plr)
     if not plr or plr == LocalPlayer then
         return "OFF"
     end
     
-    -- فحص PvpDisabled
     local pvpDisabled = false
     pcall(function()
         pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false
@@ -71,7 +68,6 @@ local function GetPlayerState(plr)
         return "OFF"
     end
     
-    -- فحص InCombat
     local char = plr.Character
     if char then
         local inCombat = false
@@ -80,11 +76,10 @@ local function GetPlayerState(plr)
         end)
         
         if inCombat then
-            FightCache[plr] = tick() -- تسجيل وقت الدخول في القتال
+            FightCache[plr] = tick()
         end
     end
     
-    -- إذا كان في قتال خلال آخر 12 ثانية
     if FightCache[plr] and (tick() - FightCache[plr]) <= 12 then
         return "FIGHT"
     end
@@ -92,7 +87,6 @@ local function GetPlayerState(plr)
     return "ON"
 end
 
--- فحص شامل وصارم للخصم حسب طلبك (الفرق + وضع الـ PVP والقتال)
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
     if not plr:IsA("Player") then return false end
@@ -106,34 +100,32 @@ local function IsValidEnemy(plr)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     
-    -- منع الاقتراب من المناطق المحظورة نهائياً
     if IsInBlacklistedZone(hrp.Position) then
         return false
     end
     
-    -- نظام الفرق (Pirates/Marines) الحصري
     local myTeam = LocalPlayer.Team
     local targetTeam = plr.Team
+    local state = GetPlayerState(plr)
     
-    -- 1. القراصنة يستهدفون الكل (قرصان أو بحرية) بشرط الـ PVP شغال
+    -- إذا الـ PVP مغلق عند الخصم، تجاهله فوراً حماية لك
+    if state == "OFF" then return false end
+    
+    -- 1. القراصنة يصيدون أي شخص مشغل الـ PVP
     if myTeam and myTeam.Name == "Pirates" then
-        local state = GetPlayerState(plr)
-        if state == "OFF" then
-            return false
-        end
         return true
     end
     
-    -- 2. البحرية تستهدف القراصنة فقط، وتتجاهل البحرية الآخرين تماماً
+    -- 2. البحرية (تم التعديل الذكي هنا لمنع توقف السكربت)
     if myTeam and myTeam.Name == "Marines" then
-        if targetTeam and targetTeam.Name == "Pirates" then
-            local state = GetPlayerState(plr)
-            if state == "OFF" then
-                return false
-            end
+        -- إذا الخصم مسجل في البحرية، نلغيه تماماً لمنع صيد ربعك
+        if targetTeam and targetTeam.Name == "Marines" then
+            return false
+        end
+        
+        -- الحين لو كان قراصنة، أو بنص الفايت (حتى لو فريقه مخفي أو nil)، السكربت بيدخل فيه فوراً
+        if (targetTeam and targetTeam.Name == "Pirates") or state == "FIGHT" then
             return true
-        else
-            return false 
         end
     end
     
@@ -233,7 +225,6 @@ local function SmoothMoveTo(targetChar, myHrp)
         return 
     end
 
-    -- الارتفاع المنخفض المثالي (12 Studs) لضمان إصابة الضربات
     local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 12, 0)
     local distance = (targetCFrame.Position - myHrp.Position).Magnitude
     
