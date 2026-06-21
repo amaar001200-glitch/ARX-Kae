@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (ULTRA PVP FIXED + FULL UI COMPATIBILITY)
--- version 2.9.5 (Fixed: Dropdown & Selection Buttons, Dynamic Team Checks)
+-- █ ARAKS HUB | AUTO HUNT MODULE (KILL SYSTEM + SKILLS)
+-- version 1.4_FIXED (Fully Compatible with Old UI Buttons & New Logic)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -18,7 +18,7 @@ do
     local RegisterAttack = Net and Net["RE/RegisterAttack"]
     local RegisterHit = Net and Net["RE/RegisterHit"]
     
-    -- بيانات AutoHunt (مربوطة مع الواجهة)
+    -- بيانات AutoHunt الأصلية (محفوظة كما هي لتعمل الأزرار معاً)
     local Enabled = false
     local KillNearest = false
     local SelectedPlayer = nil
@@ -27,7 +27,7 @@ do
     local lastHitTick = 0
     local FightCache = {}
 
-    -- الإحداثيات المحظورة للأمان
+    -- الإحداثيات المحظورة للأمان لمنع الحظر والجليتشات
     local BlacklistedZones = {
         Vector3.new(-11.26, 19.31, 2827.25),
         Vector3.new(-10.01, 35.51, 2732.26),
@@ -49,10 +49,9 @@ do
         return false
     end
 
-    -- دالة فحص حالة الـ PVP والقتال بدقة
+    -- فحص حالة الـ PVP والقتال بدقة
     local function GetPlayerState(plr)
         if not plr or plr == LocalPlayer then return "OFF" end
-        
         local pvpDisabled = false
         pcall(function()
             pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false
@@ -73,11 +72,10 @@ do
     end
     
     -- ==================================================
-    -- نظام تجنب الأصدقاء والتحالفات المطور (القرصان والبحري)
+    -- نظام تجنب الأصدقاء والتحالفات المطور
     -- ==================================================
     local function IsValidEnemy(plr)
         if not plr or plr == LocalPlayer then return false end
-        if not plr:IsA("Player") then return false end
         
         local char = plr.Character
         if not char then return false end
@@ -88,7 +86,7 @@ do
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return false end
         
-        -- حظر المناطق الأمنية والمشبوكة
+        -- تجنب المناطق الأمنية
         if IsInBlacklistedZone(hrp.Position) then return false end
         
         local myTeam = LocalPlayer.Team
@@ -102,7 +100,7 @@ do
             return true
         end
         
-        -- البحرية يصيدون القراصنة فقط أو من هم في فايت، ويتجنبون زملائهم البحرية
+        -- البحرية يتجنبون بعضهم ويصيدون القراصنة أو من في نمط القتال
         if myTeam and myTeam.Name == "Marines" then
             if targetTeam and targetTeam.Name == "Marines" then return false end
             if (targetTeam and targetTeam.Name == "Pirates") or state == "FIGHT" then
@@ -114,7 +112,7 @@ do
     end
     
     -- ==================================================
-    -- نظام الطيران عند انخفاض الدم
+    -- نظام الطيران عند انخفاض الدم (يشتغل فقط لما الموديل شغال)
     -- ==================================================
     local LOW_HEALTH_FLY = 5000
     local SAFE_HEALTH_RETURN = 8000
@@ -122,6 +120,7 @@ do
     local SavedTarget = nil
     local FlyPosition = nil
     
+    -- منصة السماء
     local SkyPlatform = Instance.new("Part")
     SkyPlatform.Name = "ARAKS_SkyPlatform"
     SkyPlatform.Size = Vector3.new(35, 1, 35)
@@ -133,11 +132,14 @@ do
     SkyPlatform.Parent = workspace
     SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
     
+    -- مفاتيح المهارات
     local HotbarKeys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
     local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
     
+    -- متغيرات التشغيل
     local currentTween = nil
     
+    -- المنصة
     local platform = Instance.new("Part")
     platform.Name = "ARAKS_Platform"
     platform.Size = Vector3.new(35, 1, 35)
@@ -149,14 +151,18 @@ do
     platform.Parent = workspace
     platform.CFrame = CFrame.new(0, -1000, 0)
     
+    -- دوال داخلية
     local function IsAlive()
         local char = LocalPlayer.Character
-        return char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
+        if not char then return false end
+        local hum = char:FindFirstChild("Humanoid")
+        return hum and hum.Health > 0
     end
     
     local function GetMyHealth()
         local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChild("Humanoid")
+        if not char then return 0 end
+        local hum = char:FindFirstChild("Humanoid")
         return hum and hum.Health or 0
     end
     
@@ -167,16 +173,17 @@ do
     local function TapKey(key)
         if not IsAlive() then return end
         VirtualInputManager:SendKeyEvent(true, key, false, game)
-        task.wait(0.02)
+        task.wait(0.018)
         VirtualInputManager:SendKeyEvent(false, key, false, game)
     end
     
     local function UseSkill(skill)
         if not IsAlive() then return end
         TapKey(skill)
+        task.wait(0.04)
         local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
         if tool then pcall(function() tool:Activate() end) end
-        task.wait(0.1) -- تسريع ضرب المهارات المتتالية
+        task.wait(0.1)
     end
     
     local function GetNearestEnemy()
@@ -189,7 +196,8 @@ do
             if IsValidEnemy(p) then
                 local c = p.Character
                 local root = c and c:FindFirstChild("HumanoidRootPart")
-                if root then
+                local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if root and hum and hum.Health > 0 then
                     local dist = (root.Position - hrp.Position).Magnitude
                     if dist < shortestDist then
                         shortestDist = dist
@@ -202,38 +210,68 @@ do
     end
     
     local function GetCurrentTarget()
-        if not IsModuleActive() then return nil end
-        if FlyMode then return SavedTarget end
+        if not IsModuleActive() then
+            return nil
+        end
         
+        if FlyMode then
+            return SavedTarget
+        end
+        
+        local target = nil
         if KillNearest then
-            return GetNearestEnemy()
+            target = GetNearestEnemy()
         elseif Enabled and SelectedPlayer then
             if IsValidEnemy(SelectedPlayer) then
-                return SelectedPlayer
+                target = SelectedPlayer
+            else
+                target = nil
             end
         end
-        return nil
+        return target
     end
     
     local function FlyToSky()
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
+        
         FlyPosition = myHrp.Position + Vector3.new(0, 7000, 0)
+        
         SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
+        SkyPlatform.CanCollide = true
+        
         myHrp.CFrame = CFrame.new(FlyPosition)
         myHrp.Velocity = Vector3.zero
+        myHrp.RotVelocity = Vector3.zero
+        
         platform.CFrame = CFrame.new(0, -1000, 0)
     end
     
     local function ReturnToGround(target)
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
-        local targetHrp = target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+        
+        local targetChar = target and target.Character
+        local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+        
         if targetHrp then
+            -- النزول بمسافة 12 ستاذ فوق الخصم لتأمين دقة التثبيت والجلد
             myHrp.CFrame = targetHrp.CFrame * CFrame.new(0, 12, 0)
         end
+        
         myHrp.Velocity = Vector3.zero
+        myHrp.RotVelocity = Vector3.zero
+        
         SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+    end
+    
+    local function GetSessionID()
+        local ok, result = pcall(function()
+            local SendHitsToServer = getrenv()._G.SendHitsToServer
+            local CombatThread = getupvalues(SendHitsToServer)[1]
+            return tostring(LocalPlayer.UserId):sub(2,4)..tostring(CombatThread):sub(11,15)
+        end)
+        return ok and result or ""
     end
     
     local function Attack(target)
@@ -241,7 +279,7 @@ do
         if RegisterAttack and RegisterHit then
             pcall(function()
                 RegisterAttack:FireServer(0.5)
-                RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
+                RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, GetSessionID())
                 if tick() - lastHitTick > 0.12 then
                     lastHitTick = tick()
                     RegisterHit:FireServer(target.HumanoidRootPart, {{target, target.HumanoidRootPart}})
@@ -263,11 +301,12 @@ do
             return false
         end
 
-        -- الارتفاع المنخفض والقرابة المثالية (12 ستاذ فقط فوقه) لثبات الضربات
+        -- التوين يحافظ على مسافة 12 ستاذ فوق رأس الخصم تماماً
         local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 12, 0)
         local distance = (targetCFrame.Position - hrp.Position).Magnitude
         
         platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+        platform.CanCollide = true
         
         if distance > 10 then
             if currentTween then pcall(function() currentTween:Cancel() end) end
@@ -278,17 +317,24 @@ do
         end
         
         hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
         return true
     end
     
-    -- مراقبة الدم والطيران
+    -- ==================================================
+    -- نظام مراقبة الدم والطيران (يشتغل فقط لما الموديل شغال)
+    -- ==================================================
     task.spawn(function()
         while true do
             task.wait(0.1)
+            
             if not IsModuleActive() or not IsAlive() then
                 if FlyMode then
                     FlyMode = false
-                    SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+                    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if myHrp then
+                        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+                    end
                 end
                 continue
             end
@@ -296,35 +342,42 @@ do
             local myHealth = GetMyHealth()
             local currentTarget = GetCurrentTarget()
             
+            -- حالة انخفاض الدم
             if myHealth <= LOW_HEALTH_FLY and not FlyMode and IsModuleActive() then
                 FlyMode = true
                 SavedTarget = currentTarget
                 FlyToSky()
             end
             
+            -- حالة العودة بعد تعبئة الدم
             if FlyMode and myHealth >= SAFE_HEALTH_RETURN then
                 FlyMode = false
                 ReturnToGround(SavedTarget)
             end
             
+            -- تثبيت في السماء
             if FlyMode then
                 local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if myHrp and FlyPosition then
                     myHrp.CFrame = CFrame.new(FlyPosition)
                     myHrp.Velocity = Vector3.zero
+                    myHrp.RotVelocity = Vector3.zero
                     SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
                 end
             end
         end
     end)
     
-    -- كومبو المهارات فائق السرعة
+    -- لوب المهارات
     task.spawn(function()
         while true do
             task.wait(0.2)
-            if not IsAlive() or not IsModuleActive() or FlyMode then continue end
+            if not IsAlive() then continue end
+            if not IsModuleActive() then continue end
+            if FlyMode then continue end
             
             local target = GetCurrentTarget()
+            
             if target and target.Character then
                 local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 local tHrp = target.Character:FindFirstChild("HumanoidRootPart")
@@ -333,11 +386,15 @@ do
                         SkillBusy = true
                         pcall(function()
                             for _, slot in ipairs(HotbarKeys) do
-                                if not IsAlive() or FlyMode or not IsModuleActive() then break end
+                                if not IsAlive() then break end
+                                if FlyMode then break end
+                                if not IsModuleActive() then break end
                                 TapKey(slot)
                                 task.wait(0.05)
                                 for _, skill in ipairs(SkillKeys) do
-                                    if not IsAlive() or FlyMode or not IsModuleActive() then break end
+                                    if not IsAlive() then break end
+                                    if FlyMode then break end
+                                    if not IsModuleActive() then break end
                                     UseSkill(skill)
                                 end
                                 task.wait(0.05)
@@ -350,7 +407,7 @@ do
         end
     end)
     
-    -- لوب القتال والتوين الرئيسي
+    -- لوب القتال الرئيسي
     task.spawn(function()
         while true do
             task.wait()
@@ -366,6 +423,7 @@ do
             end
             
             local huntTarget = GetCurrentTarget()
+            
             if huntTarget and huntTarget.Character then
                 local enemy = huntTarget.Character
                 local humanoid = enemy:FindFirstChild("Humanoid")
@@ -383,7 +441,7 @@ do
     end)
     
     -- ==================================================
-    -- دوال التحكم المتوافقة مع أزرار الواجهة (UI Fix)
+    -- دوال التحكم الأصلية (ثابتة تماماً للتوافق مع واجهتك)
     -- ==================================================
     function AutoHuntModule:SetEnabled(state)
         Enabled = state
@@ -391,7 +449,8 @@ do
             KillNearest = false
             FlyMode = false  
             SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
-        else
+        end
+        if not state then
             if currentTween then pcall(function() currentTween:Cancel() end) end
             currentTween = nil
             platform.CFrame = CFrame.new(0, -1000, 0)
@@ -406,14 +465,15 @@ do
             Enabled = false
             FlyMode = false
             SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
-        else
+        end
+        if not state then
             if currentTween then pcall(function() currentTween:Cancel() end) end
             currentTween = nil
             platform.CFrame = CFrame.new(0, -1000, 0)
         end
     end
     
-    -- دالة تحويل النص إلى لاعب حقيقي فوراً عند استخدام الـ Dropdown بالواجهة
+    -- تم تعديلها لتقبل الاسم النصي من الـ Dropdown وتحوله للاعب حقيقي تلقائياً
     function AutoHuntModule:SetSelectedPlayer(playerOrName)
         local targetPlayer = nil
         
@@ -429,7 +489,7 @@ do
         end
 
         if targetPlayer and not IsValidEnemy(targetPlayer) then
-            print("[ARAKS HUB] اللاعب غير صالح أو في فريق حليف أو ميزة الـ PVP مغلقة عنده")
+            print("[ARAKS HUB] لا يمكن تحديد هذا اللاعب (صديق، نفس الفريق، أو حظر مناطق)")
             SelectedPlayer = nil
             return
         end
