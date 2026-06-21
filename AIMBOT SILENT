@@ -23,8 +23,11 @@ do
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
 
-    -- 🔥 تفعيل تلقائي فوراً
-    getgenv().CamLockActive = true
+    -- 🔥 حل مشكلة الزر - نفس نظام السكربت القديم
+    -- التأكد من وجود المتغير العام بنفس طريقة السكربت القديم
+    if getgenv().CamLockActive == nil then
+        getgenv().CamLockActive = false -- نفس القيمة الافتراضية للسكربت القديم
+    end
 
     -- ==================================================
     -- قائمة الإحداثيات المحظورة (Anti-Farm)
@@ -242,6 +245,8 @@ do
     -- الحصول على أقرب عدو
     -- ==================================================
     local function GetNearestEnemy()
+        if not getgenv().CamLockActive then return nil end -- 🔥 التحقق من الحالة
+        
         local char = player.Character
         if not char then return nil end
         
@@ -509,7 +514,7 @@ do
     StartRadar()
 
     -- ==================================================
-    -- API
+    -- API - دالة للتحكم من الخارج (نفس طريقة السكربت القديم)
     -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().CamLockActive = state
@@ -524,10 +529,37 @@ do
         end
     end
 
+    -- ==================================================
+    -- مراقبة التغييرات على المتغير العام (نفس طريقة السكربت القديم)
+    -- ==================================================
+    local function MonitorState()
+        local lastState = getgenv().CamLockActive
+        while task.wait(0.1) do
+            if getgenv().CamLockActive ~= lastState then
+                lastState = getgenv().CamLockActive
+                if not lastState then
+                    -- إيقاف كل شيء فوراً
+                    if lastTarget then
+                        ResetHitbox(lastTarget)
+                        lastTarget = nil
+                    end
+                    CurrentTarget = nil
+                    targetCharacter = nil
+                    PurpleChams.Visible = false
+                end
+            end
+        end
+    end
+    
+    -- تشغيل المراقبة
+    task.spawn(MonitorState)
+
     print("[ARAKS HUB] ✅ CAMERA LOCK + HITBOX + RADAR ACTIVATED!")
     print("[ARAKS HUB] 🚫 تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
     print("[ARAKS HUB] 📡 PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي")
     print("[ARAKS HUB] ⚔️ نظام الفرق يعمل (Pirates/Marines)")
+    print("[ARAKS HUB] 🔘 الحالة الافتراضية: " .. tostring(getgenv().CamLockActive))
+    print("[ARAKS HUB] 🔘 يمكن التحكم عن طريق getgenv().CamLockActive")
 end
 
 return AimbotModule
