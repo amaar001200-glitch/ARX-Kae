@@ -1,7 +1,6 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER FIXED (v2026 Mapped)
--- ✅ تم إصلاح توجيه المهارات والضربات بعد تحديث الـ CombatController
--- ✅ توجيه تلقائي للخصم أينما ضغطت على الشاشة
--- ✅ تكبير حجم الـ Hitbox الشفاف إلى 95 لجلد عنيف ومؤكد
+-- █ ARAKS HUB AIMBOT (LAG FIXED & OPTIMIZED)
+-- ✅ تم إزالة تجميد الأساليب واللاق بالكامل عبر تحسين التوجيه
+-- ✅ الهيت بوكس 95 شفاف وثابت بدون حشو للعمليات
 
 local AimbotModule = {}
 
@@ -12,19 +11,18 @@ do
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     
-    -- محاولة استدعاء الموديول المحدث
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
 
-    getgenv().AimbotActive = true -- تفعيل تلقائي للتجربة المباشرة
+    getgenv().AimbotActive = true
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1000, 
         HitboxSize = 95,     
-        Prediction = 0.05, -- تنبؤ أسرع متناسق مع تحديث الفريمات الجديد
+        Prediction = 0.05,
     }
 
     local function IsValidEnemy(plr)
@@ -93,17 +91,18 @@ do
         
         if rootPart and humanoid and humanoid.Health > 0 then
             pcall(function()
-                rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                rootPart.CanCollide = false
-                rootPart.Transparency = 1.0
+                -- تعديل الحجم مرة واحدة فقط عند الحاجة لتجنب اللاق
+                if rootPart.Size.X ~= AimbotConfig.HitboxSize then
+                    rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                    rootPart.CanCollide = false
+                    rootPart.Transparency = 1.0
+                end
                 
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
                 if CombatController and type(CombatController.runHitDetection) == "function" then
-                    task.spawn(function()
-                        pcall(function() CombatController.runHitDetection(plr.Character) end)
-                    end)
+                    CombatController.runHitDetection(plr.Character)
                 end
             end)
         end
@@ -125,7 +124,7 @@ do
         end
     end
     
-    -- حلقة التحديث المستمر للـ Aim والتنبؤ
+    -- حلقة رندر خفيفة جداً لتحديث الموقع فقط دون تعديل خصائص الكاميرا باستمرار
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
             if lastTarget then ResetHitbox(lastTarget) lastTarget = nil end
@@ -154,38 +153,28 @@ do
         end
     end)
     
-    -- تثبيت دوري للهيت بوكس المطور لضمان عدم إفلات الخصم
+    -- تثبيت دوري متباعد جداً (نصف ثانية) لمنع تكدس العمليات وتجميد اللعبة
     task.spawn(function()
-        while task.wait(0.1) do
+        while task.wait(0.5) do
             if getgenv().AimbotActive and lastTarget then
                 ApplyHitboxSystem(lastTarget)
             end
         end
     end)
     
-    -- ==================================================
-    -- التعديل الجوهري: تزييف الـ __index لـ Hit و CFrame الخاص بالكاميرا عند اللمس
-    -- ==================================================
+    -- الـ __index الكلاسيكي الخفيف لـ Hit فقط (تم إزالة الكاميرا لحل اللاق تماماً)
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
-        if getgenv().AimbotActive and not checkcaller() and CurrentTarget and CurrentTarget.Character then
+        if index == "Hit" and getgenv().AimbotActive and not checkcaller() and CurrentTarget and CurrentTarget.Character then
             local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
             if targetPart then
-                -- إذا كانت اللعبة تحاول قراءة موقع الماوس أو اللمس لتوجيه الضربة
-                if index == "Hit" then
-                    return targetPart.CFrame
-                elseif index == "CFrame" and self == Camera then
-                    -- إجبار الكاميرا البرمجية على النظر للخصم للحظة إطلاق المهارة لضمان التوجيه
-                    return CFrame.lookAt(Camera.CFrame.Position, CurrentTargetPos)
-                end
+                return targetPart.CFrame
             end
         end
         return oldIndex(self, index)
     end)
     
-    -- ==================================================
-    -- REMOTE HOOK المطور لتوجيه كافة معاملات الـ Vector3 تلقائياً
-    -- ==================================================
+    -- ريموت هوك آمن ومفلتر بدقة لمنع تجميد المهارات
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         local method = getnamecallmethod()
@@ -195,7 +184,8 @@ do
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
                 
-                if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") then
+                -- إضافة فلاتر إضافية لحماية مهارات الحركة والأساليب الخاصة باللاعب من التجميد
+                if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") and not remoteName:find("combat") and not remoteName:find("update") then
                     local changed = false
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
@@ -223,7 +213,7 @@ do
         end
     end
     
-    print("[ARAKS HUB V2] FIXED & OPTIMIZED FOR NEW COMBAT UPDATE")
+    print("[ARAKS HUB V2.1] LAG FIXED - OPTIMIZED PERFORMANCES")
 end
 
 return AimbotModule
