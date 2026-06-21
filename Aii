@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (NORMAL SIZE + FAST COMBOS + STRICT ANTI-ZONE)
--- version 2.8.9 (Fixed: No Scale, Ultra Fast Weapon Swap, Absolute Zone Lock)
+-- █ ARAKS HUB | AUTO HUNT MODULE (NORMAL SIZE + FAST COMBOS + PERFECT HEIGHT)
+-- version 2.9.0 (Fixed: Lower Height for 100% Hit Rate, Fast Weapon Swap, Zone Lock)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -44,11 +44,10 @@ local BlacklistedZones = {
     Vector3.new(-16228.93, 9.09, 375.49)
 }
 
--- فحص صارم يمنع الاقتراب من الإحداثيات نهائياً
 local function IsInBlacklistedZone(targetPos)
     if not targetPos then return true end
     for _, zonePos in ipairs(BlacklistedZones) do
-        if (targetPos - zonePos).Magnitude <= 150 then return true end -- رفعنا المدى قليلاً لزيادة الأمان
+        if (targetPos - zonePos).Magnitude <= 150 then return true end 
     end
     return false
 end
@@ -68,8 +67,6 @@ local function IsValidEnemy(plr)
     local root = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 or not root then return false end
-    
-    -- حماية مطلقة: لو الخصم داخل المنطقة السوداء، نلغيه تماماً ولا نعتبره هدف صالح
     if IsInBlacklistedZone(root.Position) then return false end
     
     local myTeam = LocalPlayer.Team
@@ -104,7 +101,7 @@ end
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.03) -- استجابة ضغط أسرع
+    task.wait(0.03) 
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
@@ -131,23 +128,21 @@ local function FireTimedSkills(targetPlayer)
     CurrentSkillThread = task.spawn(function()
         while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
             
-            -- تبديل سريع جداً للسلاح الأول
             TapKey(Enum.KeyCode.One)
             task.wait(0.05) 
             
             local startTime1 = tick()
-            while tick() - startTime1 < 6 do -- تقليل وقت الانتظار لجعل الكومبو ديناميكي
+            while tick() - startTime1 < 6 do 
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
                     if tool then pcall(function() tool:Activate() end) end
-                    task.wait(0.1) -- تسريع إطلاق السكلات المتتالية
+                    task.wait(0.1) 
                 end
                 task.wait(0.05)
             end
 
-            -- تبديل سريع جداً للسلاح الثاني
             TapKey(Enum.KeyCode.Two)
             task.wait(0.05)
             
@@ -171,20 +166,21 @@ local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
     local enemyRoot = targetChar.HumanoidRootPart
     
-    -- قفل الإحداثيات: لو إحداثي الخصم محظور، نلغي التوين فوراً ولا نذهب إليه
     if IsInBlacklistedZone(enemyRoot.Position) then 
         if currentTween then currentTween:Cancel() end
         return 
     end
 
-    local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 55, 0)
+    -- تم إنزال الارتفاع من 55 إلى 12 ليصبح قريباً جداً وتحت ولا تضيع الضربات
+    local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 12, 0)
     local distance = (targetCFrame.Position - myHrp.Position).Magnitude
     
     GlobalTargetPos = enemyRoot.Position
     
     local platformLoop = RunService.Heartbeat:Connect(function()
         if myHrp and myHrp.Parent then
-            platform.CFrame = CFrame.new(myHrp.Position.X, myHrp.Position.Y - 5, myHrp.Position.Z)
+            -- بلاتفورم خفيفة تحت رجلك مباشرة لمنع السقوط
+            platform.CFrame = CFrame.new(myHrp.Position.X, myHrp.Position.Y - 3.5, myHrp.Position.Z)
         end
     end)
     
@@ -202,7 +198,7 @@ local function SmoothMoveTo(targetChar, myHrp)
 end
 
 -- ==================================================
--- اللوب الأساسي الديناميكي (بدون أي تكبير)
+-- اللوب الأساسي الديناميكي
 -- ==================================================
 task.spawn(function()
     while true do
@@ -243,7 +239,6 @@ task.spawn(function()
             local enemy = huntTarget.Character
             local humanoid = enemy and enemy:FindFirstChild("Humanoid")
             
-            -- فحص نهائي للتأكد من أن الهدف لم يدخل المنطقة المحظورة أثناء الملاحقة
             if humanoid and humanoid.Health > 0 and IsValidEnemy(huntTarget) and not IsInBlacklistedZone(enemy.HumanoidRootPart.Position) then
                 SmoothMoveTo(enemy, myHrp)
                 
