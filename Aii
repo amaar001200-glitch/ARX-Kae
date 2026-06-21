@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (NORMAL SIZE + FAST COMBOS + PERFECT HEIGHT)
--- version 2.9.0 (Fixed: Lower Height for 100% Hit Rate, Fast Weapon Swap, Zone Lock)
+-- █ ARAKS HUB | AUTO HUNT MODULE (ULTRA SECURITY PVP FILTER + FAST COMBOS)
+-- version 2.9.1 (Fixed: Advanced Team Checks, Fight Cache Track, Low Hitbox)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -31,6 +31,9 @@ local GlobalTargetPos = nil
 local CurrentSkillThread = nil 
 local lastHitTick = 0 
 
+-- كاش لتسجيل أوقات قتال اللاعبين لحمايتهم وملاحقتهم بدقة
+local FightCache = {}
+
 local BlacklistedZones = {
     Vector3.new(-11.26, 19.31, 2827.25),
     Vector3.new(-10.01, 35.51, 2732.26),
@@ -52,30 +55,89 @@ local function IsInBlacklistedZone(targetPos)
     return false
 end
 
-local function IsValidEnemy(plr)
-    if not plr or plr == LocalPlayer then return false end
+-- دالة الحصول على حالة PVP للاعب بدقة مع الكاش
+local function GetPlayerState(plr)
+    if not plr or plr == LocalPlayer then
+        return "OFF"
+    end
     
+    -- فحص PvpDisabled
     local pvpDisabled = false
-    pcall(function() 
+    pcall(function()
         pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false
     end)
-    if pvpDisabled then return false end 
+    
+    if pvpDisabled then
+        return "OFF"
+    end
+    
+    -- فحص InCombat
+    local char = plr.Character
+    if char then
+        local inCombat = false
+        pcall(function()
+            inCombat = char:GetAttribute("InCombat")
+        end)
+        
+        if inCombat then
+            FightCache[plr] = tick() -- تسجيل وقت الدخول في القتال
+        end
+    end
+    
+    -- إذا كان في قتال خلال آخر 12 ثانية
+    if FightCache[plr] and (tick() - FightCache[plr]) <= 12 then
+        return "FIGHT"
+    end
+    
+    return "ON"
+end
+
+-- فحص شامل وصارم للخصم حسب طلبك (الفرق + وضع الـ PVP والقتال)
+local function IsValidEnemy(plr)
+    if not plr or plr == LocalPlayer then return false end
+    if not plr:IsA("Player") then return false end
     
     local char = plr.Character
     if not char then return false end
     
-    local root = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 or not root then return false end
-    if IsInBlacklistedZone(root.Position) then return false end
+    if not hum or hum.Health <= 0 then return false end
     
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    
+    -- منع الاقتراب من المناطق المحظورة نهائياً
+    if IsInBlacklistedZone(hrp.Position) then
+        return false
+    end
+    
+    -- نظام الفرق (Pirates/Marines) الحصري
     local myTeam = LocalPlayer.Team
     local targetTeam = plr.Team
-    if myTeam and myTeam.Name == "Pirates" then return true end
-    if myTeam and myTeam.Name == "Marines" then
-        if targetTeam and targetTeam.Name == "Pirates" then return true else return false end
+    
+    -- 1. القراصنة يستهدفون الكل (قرصان أو بحرية) بشرط الـ PVP شغال
+    if myTeam and myTeam.Name == "Pirates" then
+        local state = GetPlayerState(plr)
+        if state == "OFF" then
+            return false
+        end
+        return true
     end
-    return true
+    
+    -- 2. البحرية تستهدف القراصنة فقط، وتتجاهل البحرية الآخرين تماماً
+    if myTeam and myTeam.Name == "Marines" then
+        if targetTeam and targetTeam.Name == "Pirates" then
+            local state = GetPlayerState(plr)
+            if state == "OFF" then
+                return false
+            end
+            return true
+        else
+            return false 
+        end
+    end
+    
+    return false
 end
 
 local platform = Instance.new("Part")
@@ -171,7 +233,7 @@ local function SmoothMoveTo(targetChar, myHrp)
         return 
     end
 
-    -- تم إنزال الارتفاع من 55 إلى 12 ليصبح قريباً جداً وتحت ولا تضيع الضربات
+    -- الارتفاع المنخفض المثالي (12 Studs) لضمان إصابة الضربات
     local targetCFrame = enemyRoot.CFrame * CFrame.new(0, 12, 0)
     local distance = (targetCFrame.Position - myHrp.Position).Magnitude
     
@@ -179,7 +241,6 @@ local function SmoothMoveTo(targetChar, myHrp)
     
     local platformLoop = RunService.Heartbeat:Connect(function()
         if myHrp and myHrp.Parent then
-            -- بلاتفورم خفيفة تحت رجلك مباشرة لمنع السقوط
             platform.CFrame = CFrame.new(myHrp.Position.X, myHrp.Position.Y - 3.5, myHrp.Position.Z)
         end
     end)
