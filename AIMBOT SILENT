@@ -1,8 +1,8 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (VIRTUAL CLICK FIX)
--- ✅ تحويل طريقة النقر البرمجي الفعلي لمحاكاة الضغط فوق الخصم مباشرة
+-- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (TOUCH SPOOF FIX)
+-- ✅ تم حل مشكلة تتبع إصبعك عبر اختطاف أشعة اللمس الفعلي للجوال
+-- ✅ توجيه المهارات إجبارياً نحو إحداثيات الخصم اللحظية عند اللمس
 -- ✅ تكبير حجم الـ Hitbox السري والشفاف إلى 95 لجلد عنيف
--- ✅ تتبع موقع الخصم على الشاشة (WorldToViewportPoint) وضغطه برمجياً
--- ✅ أداء سلس وبدون تجميد للأزرار أو لاق عند الاقتراب
+-- ✅ أداء طيارة وسلس وبدون تجميد للـ UI أو القوائم
 
 local AimbotModule = {}
 
@@ -13,21 +13,20 @@ do
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
-    local VirtualUser = game:GetService("VirtualUser") -- الموديول المسؤول عن محاكاة النقر الفعلي
     
-    -- استدعاء موديول اللعبة المسؤول عن كشف الضربات والضرر الفعلي
+    -- استدعاء موديول اللعبة المسؤول عن كشف الضربات
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
 
-    getgenv().AimbotActive = true -- تفعيل السكربت تلقائياً
+    getgenv().AimbotActive = true
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
-        MaxDistance = 1000,  -- مدى 1000 متر
-        HitboxSize = 95,     -- الحجم المكبّر
-        Prediction = 0.07,   -- تنبؤ متوازن وسريع للمهارات
+        MaxDistance = 1000,
+        HitboxSize = 95,
+        Prediction = 0.07,
     }
 
     -- ==================================================
@@ -42,9 +41,6 @@ do
         
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
-        
-        local userId = plr.UserId
-        if userId <= 0 or userId == nil then return false end
         
         local myTeam = player.Team
         local targetTeam = plr.Team
@@ -142,7 +138,21 @@ do
     end
     
     -- ==================================================
-    -- AIMBOT UPDATE LOOP + نظام النقرات الافتراضية الموجهة
+    -- دالة الفلترة الذكية لحماية اللمس العادي والقوائم
+    -- ==================================================
+    local function IsPressingForSkill()
+        local char = player.Character
+        if not char then return false end
+        
+        local hasTool = char:FindFirstChildOfClass("Tool") ~= nil
+        local isTouching = #UserInputService:GetTouchPositions() > 0 or UserInputService:IsMouseButtonPressed(Enum.MouseButton1)
+        local isOverGui = UserInputService:GetFocusedTextBox() ~= nil
+        
+        return hasTool and isTouching and not isOverGui
+    end
+
+    -- ==================================================
+    -- UPDATE LOOP (حساب موقع الهدف والتنبؤ)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
@@ -166,23 +176,6 @@ do
                 CurrentTarget = target
                 local velocity = hrp.AssemblyLinearVelocity or Vector3.new(0,0,0)
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
-                
-                -- طريقتك المطلوبة: تتبع موقع الخصم ومحاكاة النقر فوقه مباشرة عند تفعيل الضرب
-                local myChar = player.Character
-                local tool = myChar and myChar:FindFirstChildOfClass("Tool")
-                local isClicking = UserInputService:IsMouseButtonPressed(Enum.MouseButton1) or #UserInputService:GetMouseLocation() > 0
-                
-                if tool and isClicking and not UserInputService:GetFocusedTextBox() then
-                    -- تحويل إحداثيات الخصم ثلاثية الأبعاد (X,Y,Z) إلى نقطة ثنائية الأبعاد على الشاشة (X,Y)
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(CurrentTargetPos)
-                    
-                    if onScreen then
-                        -- محاكاة نقرة حقيقية بواسطة محرك اللعبة فوق الخصم مباشرة في نفس الفريم
-                        pcall(function()
-                            VirtualUser:Button1Down(Vector2.new(screenPos.X, screenPos.Y), Camera.CFrame)
-                        end)
-                    end
-                end
             else
                 CurrentTarget = nil; CurrentTargetPos = nil; PurpleChams.Visible = false
             end
@@ -201,14 +194,33 @@ do
         end
     end)
     
-    -- الـ Silent Aim الأصلي كخط دفاع احتياطي متناسق
+    -- ==================================================
+    -- حاقن التوجيه الذكي: اختطاف أشعة اللمس الفعلي للجوال (Touch Spoofer)
+    -- ==================================================
+    local oldViewportPointToRay
+    oldViewportPointToRay = hookmetamethod(Camera, "ViewportPointToRay", function(self, x, y, depth)
+        if getgenv().AimbotActive and CurrentTargetPos and IsPressingForSkill() and not checkcaller() then
+            local origin = Camera.CFrame.Position
+            local direction = (CurrentTargetPos - origin).Unit
+            return Ray.new(origin, direction)
+        end
+        return oldViewportPointToRay(self, x, y, depth)
+    end)
+
+    local oldScreenPointToRay
+    oldScreenPointToRay = hookmetamethod(Camera, "ScreenPointToRay", function(self, x, y, depth)
+        if getgenv().AimbotActive and CurrentTargetPos and IsPressingForSkill() and not checkcaller() then
+            local origin = Camera.CFrame.Position
+            local direction = (CurrentTargetPos - origin).Unit
+            return Ray.new(origin, direction)
+        end
+        return oldScreenPointToRay(self, x, y, depth)
+    end)
+
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
-        if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
-            if CurrentTarget and CurrentTarget.Character then
-                local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-                if targetPart then return targetPart.CFrame end
-            end
+        if index == "Hit" and getgenv().AimbotActive and CurrentTargetPos and IsPressingForSkill() and not checkcaller() then
+            return CFrame.new(CurrentTargetPos)
         end
         return oldIndex(self, index)
     end)
@@ -228,7 +240,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] AIMBOT REBUILT VIA VIRTUAL SCREEN CLICKING - READY!")
+    print("[ARAKS HUB] TOUCH SPOOFER ACTIVE - تم إجبار اللمس على تتبع الخصم عند الضغط!")
 end
 
 return AimbotModule
