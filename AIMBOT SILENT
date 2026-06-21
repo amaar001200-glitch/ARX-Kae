@@ -1,9 +1,9 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (للاعبين فقط)
+-- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION + CAMERA LOCK (للاعبين فقط)
 -- ✅ تم دمج نظام الـ CombatController الفعلي لتأكيد الضربات مليون بالمية
 -- ✅ تكبير حجم الـ Hitbox السري والشفاف إلى 95 لجلد عنيف
 -- ✅ المدى 1000 متر حقيقي وبدون تجميد للخصوم أو للاعب الخاص بك
 -- ✅ تم إلغاء الخط وتلوين جسم الخصم بالبنفسجي (Chams) ليظهر من خلف الجدران
--- ✅ تحديث حزيران 2026: الالتفاف الكامل لتوجيه الضربات عبر اعتراض الريموتات ومحاكاة اللمس والأشعة
+-- ✅ نظام تتبع الكاميرا الناعم بدلاً من توجيه الضربات
 
 local AimbotModule = {}
 
@@ -13,7 +13,6 @@ do
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local UserInputService = game:GetService("UserInputService")
     
     -- استدعاء موديول اللعبة المسؤول عن كشف الضربات والضرر الفعلي
     local CombatController = nil
@@ -28,6 +27,7 @@ do
         MaxDistance = 1000,  -- مدى 1000 متر
         HitboxSize = 95,     -- الحجم الجديد المكبّر بناءً على طلبك
         Prediction = 0.07,   -- تنبؤ متوازن وسريع للمهارات
+        Smoothness = 0.2,    -- نسبة نعومة الكاميرا
     }
 
     -- ==================================================
@@ -167,7 +167,7 @@ do
     end
     
     -- ==================================================
-    -- AIMBOT UPDATE LOOP (حساب الآيم والتنبؤ السريع)
+    -- AIMBOT UPDATE LOOP (تحديث الهدف فقط)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
@@ -197,7 +197,7 @@ do
                 
                 CurrentTarget = target
                 
-                -- التنبؤ بموقع الخصم لحساب رمي المهارات بدقة بدلاً من تضييعها
+                -- حساب موقع الخصم للكاميرا
                 local velocity = hrp.AssemblyLinearVelocity
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
             else
@@ -216,6 +216,22 @@ do
         end
     end)
     
+    -- ==================================================
+    -- CAMERA LOCK (توجيه الكاميرا بدلاً من الضربات)
+    -- ==================================================
+    RunService.RenderStepped:Connect(function()
+        if not getgenv().AimbotActive then return end
+        
+        if CurrentTarget and CurrentTarget.Character then
+            local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
+            if targetPart then
+                -- توجيه الكاميرا بسلاسة نحو الهدف
+                local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, AimbotConfig.Smoothness)
+            end
+        end
+    end)
+    
     -- تثبيت دوري للهيت بوكس المطور لضمان عدم إفلات الخصم
     task.spawn(function()
         while task.wait(0.15) do
@@ -226,81 +242,6 @@ do
             end
         end
     end)
-    
-    -- ==================================================
-    -- 🛠️ الـ METATABLE HOOKS المحدثة بالكامل لتوجيه الضربات رغماً عن التحديث
-    -- ==================================================
-    local gmt = getrawmetatable(game)
-    local oldIndex = gmt.__index
-    local oldNamecall = gmt.__namecall
-    setreadonly(gmt, false)
-    
-    -- 1. تحويل الـ Hit وإحداثيات اللمس (X, Y) لشاشة الهاتف فوق الخصم تماماً
-    gmt.__index = newcclosure(function(self, index)
-        if getgenv().AimbotActive and not checkcaller() then
-            if self == player:GetMouse() and (index == "Hit" or index == "X" or index == "Y") then
-                if CurrentTarget and CurrentTarget.Character then
-                    local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-                    if targetPart then
-                        if index == "Hit" then
-                            return targetPart.CFrame
-                        else
-                            -- تحويل موقع الخصم ثلاثي الأبعاد إلى إحداثيات شاشة الهاتف ثنائية الأبعاد
-                            local screenPos, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
-                            if onScreen then
-                                if index == "X" then return screenPos.X end
-                                if index == "Y" then return screenPos.Y end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        return oldIndex(self, index)
-    end)
-    
-    -- 2. اعتراض وتوجيه ريموتات القتال والأشعة (توجيه الضربات الفعلي للسيرفر)
-    gmt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        
-        if getgenv().AimbotActive and not checkcaller() then
-            -- اعتراض ريموتات الضربات والمهارات وتعديل مدخلاتها الـ Vector3 والـ CFrame
-            if method == "FireServer" or method == "InvokeServer" then
-                if CurrentTarget and CurrentTarget.Character and CurrentTargetPos then
-                    local remoteName = tostring(self.Name):lower()
-                    
-                    -- حماية ريموتات الحركة والتنقل الخاصة بك لمنع الكراش أو التجميد
-                    if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") and not remoteName:find("spawn") then
-                        local changed = false
-                        for i, v in ipairs(args) do
-                            if typeof(v) == "Vector3" then
-                                args[i] = CurrentTargetPos
-                                changed = true
-                            elseif typeof(v) == "CFrame" then
-                                args[i] = CFrame.new(Camera.CFrame.Position, CurrentTargetPos)
-                                changed = true
-                            end
-                        end
-                        if changed then return oldNamecall(self, unpack(args)) end
-                    end
-                end
-                
-            -- اعتراض الأشعة البرمجية وتوجيهها نحو الخصم ليتطابق فحص السيرفر
-            elseif method == "Raycast" or method == "findPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
-                if CurrentTarget and CurrentTarget.Character then
-                    local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-                    if targetPart and typeof(args[1]) == "Vector3" then
-                        args[2] = (targetPart.Position - args[1]).Unit * 1000
-                        return oldNamecall(self, unpack(args))
-                    end
-                end
-            end
-        end
-        return oldNamecall(self, ...)
-    end)
-    
-    setreadonly(gmt, true)
     
     -- تنظيف فوري عند خروج اللاعب
     Players.PlayerRemoving:Connect(function(plr)
@@ -326,7 +267,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] COMBAT HITBOX & REMOTE REDIRECTION MERGED SUCCESSFULLY - التحديث الجديد جاهز!")
+    print("[ARAKS HUB] CAMERA LOCK + HITBOX SYSTEM ACTIVATED - الكاميرا مثبتة والهيت بوكس مكبر!")
 end
 
 return AimbotModule
