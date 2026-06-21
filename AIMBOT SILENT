@@ -1,7 +1,10 @@
--- █ ARAKS HUB CAMERA LOCK + ANTI-FARM (للاعبين فقط)
+-- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR (للاعبين فقط)
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
 -- ✅ الكاميرا فقط بدون أي توجيه ضربات
+-- ✅ Hitbox مكبر 95 مع تلوين بنفسجي
+-- ✅ نظام PVP Radar يظهر حالة اللاعبين (ON/OFF/FIGHT)
+-- ✅ الكاميرا تتبع فقط اللاعبين المشغلين لـ PvP (ON أو FIGHT)
 
 local AimbotModule = {}
 
@@ -10,7 +13,14 @@ do
     local player = Players.LocalPlayer
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     
+    -- استدعاء موديول اللعبة
+    local CombatController = nil
+    pcall(function()
+        CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
+    end)
+
     -- 🔥 تفعيل تلقائي فوراً
     getgenv().CamLockActive = true
 
@@ -31,13 +41,27 @@ do
     }
 
     -- ==================================================
+    -- متغيرات PVP Radar
+    -- ==================================================
+    local FightCache = {}
+    local RADAR_SETTINGS = {
+        Enabled = true,
+        MaxDistance = 99999,
+        RefreshRate = 0.35,
+        ShowOff = true,
+        ShowON = true,
+        ShowFight = true,
+    }
+    local activeRadars = {}
+
+    -- ==================================================
     -- التحقق من الموقع المحظور
     -- ==================================================
     local function IsPositionBlacklisted(position)
         if not position then return true end
         for _, blackPos in ipairs(BlacklistedPositions) do
             local distance = (position - blackPos).Magnitude
-            if distance < 100 then -- مدى 100 متر
+            if distance < 100 then
                 return true
             end
         end
@@ -45,7 +69,46 @@ do
     end
 
     -- ==================================================
-    -- التحقق من أن اللاعب صالح
+    -- الحصول على حالة PVP للاعب
+    -- ==================================================
+    local function GetPlayerState(plr)
+        if not plr or plr == player then
+            return nil
+        end
+        
+        -- التحقق من PvP Disabled
+        local pvpDisabled = false
+        pcall(function()
+            pvpDisabled = plr:GetAttribute("PvpDisabled")
+        end)
+        
+        if pvpDisabled then
+            return "OFF", Color3.fromRGB(255, 70, 70)
+        end
+        
+        -- التحقق من حالة القتال
+        local char = plr.Character
+        if char then
+            local inCombat = false
+            pcall(function()
+                inCombat = char:GetAttribute("InCombat")
+            end)
+            
+            if inCombat then
+                FightCache[plr] = tick()
+            end
+        end
+        
+        -- إذا كان في قتال خلال 12 ثانية الأخيرة
+        if FightCache[plr] and (tick() - FightCache[plr]) <= 12 then
+            return "FIGHT", Color3.fromRGB(255, 220, 0)
+        end
+        
+        return "ON", Color3.fromRGB(0, 255, 120)
+    end
+
+    -- ==================================================
+    -- التحقق من أن اللاعب صالح (مع PVP Radar)
     -- ==================================================
     local function IsValidPlayer(plr)
         if not plr or plr == player then return false end
@@ -65,11 +128,95 @@ do
             return false
         end
         
+        -- 🔥 التحقق من PVP: فقط ON أو FIGHT يعتبرون صالحين
+        local state, _ = GetPlayerState(plr)
+        if state == "OFF" then
+            return false
+        end
+        
         return true
     end
 
     -- ==================================================
-    -- الحصول على أقرب لاعب
+    -- إنشاء رادار PVP للاعب
+    -- ==================================================
+    local function CreateRadar(plr)
+        if not RADAR_SETTINGS.Enabled then return end
+        if plr == player then return end
+        
+        local char = plr.Character
+        if not char then return end
+        
+        local head = char:FindFirstChild("Head")
+        if not head then return end
+        
+        local oldRadar = head:FindFirstChild("ARAKS_PVP_RADAR")
+        if oldRadar then
+            pcall(function() oldRadar:Destroy() end)
+        end
+        
+        local radarGui = Instance.new("BillboardGui")
+        radarGui.Name = "ARAKS_PVP_RADAR"
+        radarGui.Adornee = head
+        radarGui.AlwaysOnTop = true
+        radarGui.MaxDistance = RADAR_SETTINGS.MaxDistance
+        radarGui.Size = UDim2.new(0, 58, 0, 12)
+        radarGui.StudsOffset = Vector3.new(2.8, -2.6, 0)
+        radarGui.Parent = head
+        
+        local holder = Instance.new("Frame", radarGui)
+        holder.BackgroundTransparency = 1
+        holder.Size = UDim2.new(1, 0, 1, 0)
+        
+        local dot = Instance.new("Frame", holder)
+        dot.Size = UDim2.new(0, 4, 0, 4)
+        dot.Position = UDim2.new(0, 0, 0.5, -2)
+        dot.BorderSizePixel = 0
+        local dotCorner = Instance.new("UICorner", dot)
+        dotCorner.CornerRadius = UDim.new(1, 0)
+        
+        local txt = Instance.new("TextLabel", holder)
+        txt.BackgroundTransparency = 1
+        txt.Position = UDim2.new(0, 7, 0, 0)
+        txt.Size = UDim2.new(1, -7, 1, 0)
+        txt.Font = Enum.Font.GothamBold
+        txt.TextSize = 9
+        txt.TextStrokeTransparency = 0.45
+        txt.TextXAlignment = Enum.TextXAlignment.Left
+        
+        activeRadars[plr] = {
+            Gui = radarGui,
+            Dot = dot,
+            Text = txt,
+            Holder = holder
+        }
+        
+        return radarGui
+    end
+
+    -- ==================================================
+    -- تحديث الرادارات
+    -- ==================================================
+    local function UpdateAllRadars()
+        if not RADAR_SETTINGS.Enabled then return end
+        
+        for plr, data in pairs(activeRadars) do
+            if not plr or not plr.Parent then
+                if data.Gui then pcall(function() data.Gui:Destroy() end) end
+                activeRadars[plr] = nil
+            else
+                local stateText, stateColor = GetPlayerState(plr)
+                if stateText then
+                    data.Text.Text = stateText
+                    data.Text.TextColor3 = stateColor
+                    data.Dot.BackgroundColor3 = stateColor
+                end
+            end
+        end
+    end
+
+    -- ==================================================
+    -- الحصول على أقرب لاعب (مع PVP و Anti-Farm)
     -- ==================================================
     local function GetNearestPlayer()
         local char = player.Character
@@ -78,7 +225,6 @@ do
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return nil end
         
-        -- 🔥 إذا كنت في منطقة محظورة، لا تعمل
         if IsPositionBlacklisted(myHrp.Position) then
             return nil
         end
@@ -103,10 +249,131 @@ do
     end
 
     -- ==================================================
-    -- CAMERA LOCK (تشغيل تلقائي)
+    -- متغيرات Hitbox والتلوين
+    -- ==================================================
+    local CurrentTarget = nil
+    local CurrentTargetPos = nil
+    local lastTarget = nil
+    
+    local PurpleChams = Instance.new("BoxHandleAdornment")
+    PurpleChams.Size = Vector3.new(4, 6, 4)
+    PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
+    PurpleChams.AlwaysOnTop = true
+    PurpleChams.ZIndex = 10
+    PurpleChams.Transparency = 0.4
+    PurpleChams.Visible = false
+    PurpleChams.Parent = game:GetService("CoreGui")
+
+    -- ==================================================
+    -- تطبيق Hitbox
+    -- ==================================================
+    local function ApplyHitboxSystem(plr)
+        if not plr or not plr.Character then return end
+        
+        local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
+        local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+        
+        if rootPart and humanoid and humanoid.Health > 0 then
+            if IsPositionBlacklisted(rootPart.Position) then
+                return
+            end
+            
+            pcall(function()
+                rootPart.Size = Vector3.new(95, 95, 95)
+                rootPart.CanCollide = false
+                rootPart.Transparency = 1.0
+                rootPart.Material = Enum.Material.ForceField
+                
+                PurpleChams.Adornee = rootPart
+                PurpleChams.Visible = true
+                
+                if CombatController and type(CombatController.runHitDetection) == "function" then
+                    task.spawn(function()
+                        pcall(function() CombatController.runHitDetection(plr.Character) end)
+                    end)
+                end
+            end)
+        end
+    end
+
+    -- ==================================================
+    -- إعادة ضبط Hitbox
+    -- ==================================================
+    local function ResetHitbox(plr)
+        if not plr or not plr.Character then return end
+        
+        local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            pcall(function()
+                rootPart.Size = Vector3.new(2, 2, 2)
+                rootPart.CanCollide = true
+                rootPart.Transparency = 0
+            end)
+        end
+        
+        if rootPart and PurpleChams.Adornee == rootPart then
+            PurpleChams.Visible = false
+            PurpleChams.Adornee = nil
+        end
+    end
+
+    -- ==================================================
+    -- تحديث الهدف
     -- ==================================================
     RunService.RenderStepped:Connect(function()
-        -- 🔥 تعمل تلقائياً بدون need to set CamLockActive
+        if not getgenv().CamLockActive then
+            if lastTarget then
+                ResetHitbox(lastTarget)
+                lastTarget = nil
+            end
+            CurrentTarget = nil
+            CurrentTargetPos = nil
+            PurpleChams.Visible = false
+            return
+        end
+        
+        local target = GetNearestPlayer()
+        
+        if target then
+            local hrp = target:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if IsPositionBlacklisted(hrp.Position) then
+                    if lastTarget then
+                        ResetHitbox(lastTarget)
+                        lastTarget = nil
+                    end
+                    CurrentTarget = nil
+                    CurrentTargetPos = nil
+                    PurpleChams.Visible = false
+                    return
+                end
+                
+                if target ~= lastTarget then
+                    if lastTarget then
+                        ResetHitbox(lastTarget)
+                    end
+                    lastTarget = target
+                    ApplyHitboxSystem(target.Parent)
+                end
+                
+                CurrentTarget = target
+                CurrentTargetPos = hrp.Position
+            end
+        else
+            if lastTarget then
+                ResetHitbox(lastTarget)
+                lastTarget = nil
+            end
+            CurrentTarget = nil
+            CurrentTargetPos = nil
+            PurpleChams.Visible = false
+        end
+    end)
+
+    -- ==================================================
+    -- CAMERA LOCK
+    -- ==================================================
+    RunService.RenderStepped:Connect(function()
         if not getgenv().CamLockActive then return end
         
         local char = player.Character
@@ -118,19 +385,15 @@ do
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
         
-        -- 🔥 إذا كنت في منطقة محظورة، أوقف الكاميرا
         if IsPositionBlacklisted(myHrp.Position) then return end
         
-        local target = GetNearestPlayer()
-        if target then
-            local targetPart = target:FindFirstChild("HumanoidRootPart")
+        if CurrentTarget then
+            local targetPart = CurrentTarget:FindFirstChild("HumanoidRootPart")
             if targetPart then
-                -- 🔥 تأكد أن الهدف ليس في منطقة محظورة
                 if IsPositionBlacklisted(targetPart.Position) then
                     return
                 end
                 
-                -- توجيه الكاميرا فقط
                 local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
                 Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.3)
             end
@@ -138,14 +401,87 @@ do
     end)
 
     -- ==================================================
-    -- API للتحكم اليدوي (اختياري)
+    -- صيانة Hitbox
+    -- ==================================================
+    task.spawn(function()
+        while task.wait(0.15) do
+            if getgenv().CamLockActive and lastTarget then
+                local hrp = lastTarget:FindFirstChild("HumanoidRootPart")
+                if hrp and not IsPositionBlacklisted(hrp.Position) then
+                    ApplyHitboxSystem(lastTarget.Parent)
+                end
+            end
+        end
+    end)
+
+    -- ==================================================
+    -- إعداد الرادار للاعبين
+    -- ==================================================
+    local function SetupRadarForPlayer(plr)
+        if plr == player then return end
+        task.wait(0.5)
+        if RADAR_SETTINGS.Enabled then
+            CreateRadar(plr)
+        end
+        
+        plr.CharacterAdded:Connect(function()
+            task.wait(1)
+            if RADAR_SETTINGS.Enabled then
+                CreateRadar(plr)
+            end
+        end)
+    end
+
+    -- ==================================================
+    -- بدء تشغيل الرادار
+    -- ==================================================
+    local function StartRadar()
+        for _, plr in pairs(Players:GetPlayers()) do
+            SetupRadarForPlayer(plr)
+        end
+        
+        Players.PlayerAdded:Connect(SetupRadarForPlayer)
+        
+        RunService.Heartbeat:Connect(function()
+            if RADAR_SETTINGS.Enabled then
+                UpdateAllRadars()
+            end
+        end)
+        
+        Players.PlayerRemoving:Connect(function(plr)
+            if activeRadars[plr] then
+                if activeRadars[plr].Gui then
+                    pcall(function() activeRadars[plr].Gui:Destroy() end)
+                end
+                activeRadars[plr] = nil
+            end
+        end)
+    end
+
+    -- ==================================================
+    -- تشغيل الرادار
+    -- ==================================================
+    StartRadar()
+
+    -- ==================================================
+    -- API
     -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().CamLockActive = state
+        if not state then
+            if lastTarget then
+                ResetHitbox(lastTarget)
+                lastTarget = nil
+            end
+            CurrentTarget = nil
+            CurrentTargetPos = nil
+            PurpleChams.Visible = false
+        end
     end
 
-    print("[ARAKS HUB] ✅ CAMERA LOCK ACTIVATED - الكاميرا تعمل الآن!")
+    print("[ARAKS HUB] ✅ CAMERA LOCK + HITBOX + RADAR ACTIVATED!")
     print("[ARAKS HUB] 🚫 تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
+    print("[ARAKS HUB] 📡 PVP Radar يعمل - يظهر ON/OFF/FIGHT")
 end
 
 return AimbotModule
