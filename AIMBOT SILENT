@@ -1,8 +1,8 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (TOUCH SPOOF FIX)
--- ✅ تم حل مشكلة تتبع إصبعك عبر اختطاف أشعة اللمس الفعلي للجوال
--- ✅ توجيه المهارات إجبارياً نحو إحداثيات الخصم اللحظية عند اللمس
+-- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (DYNAMIC TOUCH FIX)
+-- ✅ توجيه ديناميكي: نقر تلقائي مستمر للفواكه وتزوير أشعة اللمس للأساليب والسيوف
 -- ✅ تكبير حجم الـ Hitbox السري والشفاف إلى 95 لجلد عنيف
--- ✅ أداء طيارة وسلس وبدون تجميد للـ UI أو القوائم
+-- ✅ مدى 1000 متر حقيقي وبدون تجميد للخصوم أو للاعب الخاص بك
+-- ✅ تم إلغاء الخط وتلوين جسم الخصم بالبنفسجي (Chams) ليظهر من خلف الجدران
 
 local AimbotModule = {}
 
@@ -13,14 +13,15 @@ do
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
+    local VirtualUser = game:GetService("VirtualUser")
     
-    -- استدعاء موديول اللعبة المسؤول عن كشف الضربات
+    -- استدعاء موديول اللعبة المسؤول عن كشف الضربات والضرر الفعلي
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
 
-    getgenv().AimbotActive = true
+    getgenv().AimbotActive = true -- تفعيل تلقائي
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
@@ -66,7 +67,7 @@ do
     PurpleChams.Visible = false
     PurpleChams.Parent = game:GetService("CoreGui")
     
-    -- الحصول على أقرب لاعب
+    -- الحصول على أقرب لاعب (مدى 1000)
     local function GetNearestEnemy()
         local char = player.Character
         if not char then return nil end
@@ -95,7 +96,7 @@ do
         return nearest
     end
     
-    -- تطبيق الـ Hitbox المطور والشفاف
+    -- تطبيق الـ Hitbox المطور والشفاف مع تفعيل الـ Controller
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -137,22 +138,18 @@ do
         end
     end
     
-    -- ==================================================
-    -- دالة الفلترة الذكية لحماية اللمس العادي والقوائم
-    -- ==================================================
+    -- فلترة القتال الذكية
     local function IsPressingForSkill()
         local char = player.Character
         if not char then return false end
-        
         local hasTool = char:FindFirstChildOfClass("Tool") ~= nil
         local isTouching = #UserInputService:GetTouchPositions() > 0 or UserInputService:IsMouseButtonPressed(Enum.MouseButton1)
         local isOverGui = UserInputService:GetFocusedTextBox() ~= nil
-        
         return hasTool and isTouching and not isOverGui
     end
 
     -- ==================================================
-    -- UPDATE LOOP (حساب موقع الهدف والتنبؤ)
+    -- UPDATE LOOP (تحديث الآيم والتوجيه الديناميكي)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
@@ -176,6 +173,25 @@ do
                 CurrentTarget = target
                 local velocity = hrp.AssemblyLinearVelocity or Vector3.new(0,0,0)
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
+                
+                -- التوجيه الذكي المستنتج من تجربة الفيديو:
+                local myChar = player.Character
+                local tool = myChar and myChar:FindFirstChildOfClass("Tool")
+                
+                if tool and IsPressingForSkill() then
+                    local toolTip = tool.ToolTip
+                    
+                    -- 1. إذا كانت فاكهة: نطبق أمر النقر التلقائي المكثف على موقع الخصم في الشاشة
+                    if toolTip == "Blox Fruit" then
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(CurrentTargetPos)
+                        if onScreen then
+                            pcall(function()
+                                VirtualUser:Button1Down(Vector2.new(screenPos.X, screenPos.Y), Camera.CFrame)
+                                VirtualUser:ClickButton1(Vector2.new(screenPos.X, screenPos.Y), Camera.CFrame)
+                            end)
+                        end
+                    end
+                end
             else
                 CurrentTarget = nil; CurrentTargetPos = nil; PurpleChams.Visible = false
             end
@@ -195,7 +211,7 @@ do
     end)
     
     -- ==================================================
-    -- حاقن التوجيه الذكي: اختطاف أشعة اللمس الفعلي للجوال (Touch Spoofer)
+    -- التوجيه الاحتياطي للسيوف والأساليب عبر الميتاميثود (Touch Spoofing)
     -- ==================================================
     local oldViewportPointToRay
     oldViewportPointToRay = hookmetamethod(Camera, "ViewportPointToRay", function(self, x, y, depth)
@@ -240,7 +256,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] TOUCH SPOOFER ACTIVE - تم إجبار اللمس على تتبع الخصم عند الضغط!")
+    print("[ARAKS HUB] DYNAMIC COMBAT SYSTEM READY FOR ALL TOOLS!")
 end
 
 return AimbotModule
