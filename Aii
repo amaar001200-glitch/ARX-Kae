@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (FIXED MARINES PVP LOGIC + SELECT PLAYER)
--- version 2.9.3 (Fixed: Select Player, Marines Logic, Priority System)
+-- █ ARAKS HUB | AUTO HUNT MODULE (FIXED MARINES PVP LOGIC + SKY ESCAPE SYSTEM)
+-- version 2.9.4 (Integrated: Sky Fly on Low Health, Target Selection Fix)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -33,6 +33,26 @@ local lastHitTick = 0
 local platformLoop = nil
 
 local FightCache = {}
+
+-- ============================================================
+-- ███ إعدادات نظام الطيران والهروب للسماء ███
+-- ============================================================
+local LOW_HEALTH_FLY = 5000
+local SAFE_HEALTH_RETURN = 8000
+local FlyMode = false
+local SavedTarget = nil
+local FlyPosition = nil
+
+local SkyPlatform = Instance.new("Part")
+SkyPlatform.Name = "ARAKS_SkyPlatform"
+SkyPlatform.Size = Vector3.new(35, 1, 35)
+SkyPlatform.Transparency = 0.5
+SkyPlatform.Material = Enum.Material.ForceField
+SkyPlatform.Color = Color3.fromRGB(255, 85, 85)
+SkyPlatform.Anchored = true
+SkyPlatform.CanCollide = true
+SkyPlatform.Parent = workspace
+SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
 
 local BlacklistedZones = {
     Vector3.new(-11.26, 19.31, 2827.25),
@@ -88,9 +108,6 @@ local function GetPlayerState(plr)
     return "ON"
 end
 
--- ============================================================
--- ███ الدالة الأساسية للتحقق من صحة الهدف (تم إصلاحها) ███
--- ============================================================
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
     if not plr:IsA("Player") then return false end
@@ -112,41 +129,25 @@ local function IsValidEnemy(plr)
     local targetTeam = plr.Team
     local state = GetPlayerState(plr)
     
-    -- إذا الـ PVP مغلق عند الخصم، تجاهله
     if state == "OFF" then return false end
     
-    -- ==========================================
-    -- ✅ الحالة 1: إذا كان هناك لاعب محدد يدوياً
-    -- نسمح باستهدافه بغض النظر عن الفريق
-    -- ==========================================
     if AutoHuntModule.SelectedPlayer and AutoHuntModule.SelectedPlayer == plr then
-        -- نسمح بالاستهداف إذا كان PVP شغال
         return state == "ON" or state == "FIGHT"
     end
     
-    -- ==========================================
-    -- ✅ الحالة 2: القراصنة يصيدون أي شخص مشغل الـ PVP
-    -- ==========================================
     if myTeam and myTeam.Name == "Pirates" then
         return state == "ON" or state == "FIGHT"
     end
     
-    -- ==========================================
-    -- ✅ الحالة 3: البحرية (تم الإصلاح الكامل)
-    -- ==========================================
     if myTeam and myTeam.Name == "Marines" then
-        -- لا نستهدف زملاءنا في البحرية أبداً
         if targetTeam and targetTeam.Name == "Marines" then
             return false
         end
         
-        -- نستهدف القراصنة فقط، أو أي شخص في حالة قتال
         if (targetTeam and targetTeam.Name == "Pirates") or state == "FIGHT" then
             return true
         end
         
-        -- أي شخص آخر ليس في فريقنا وليس قرصاناً ولا في قتال
-        -- نسمح باستهدافه إذا كان PVP شغال (للبحث عن قراصنة)
         if not targetTeam or targetTeam.Name ~= "Marines" then
             return state == "ON"
         end
@@ -169,6 +170,12 @@ platform.CFrame = CFrame.new(0, -1000, 0)
 local function IsAlive()
     local char = LocalPlayer.Character
     return char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
+end
+
+local function GetMyHealth()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    return hum and hum.Health or 0
 end
 
 local function IsModuleActive()
@@ -198,19 +205,47 @@ local function Attack(target)
     end
 end
 
+-- ============================================================
+-- ███ دوال تحريك الطيران والنزول للأرض ███
+-- ============================================================
+local function FlyToSky()
+    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return end
+    
+    FlyPosition = myHrp.Position + Vector3.new(0, 7000, 0)
+    SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
+    
+    if currentTween then pcall(function() currentTween:Cancel() end) end
+    myHrp.CFrame = CFrame.new(FlyPosition)
+    myHrp.Velocity = Vector3.zero
+    platform.CFrame = CFrame.new(0, -1000, 0)
+end
+
+local function ReturnToGround(target)
+    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return end
+    
+    local targetHrp = target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+    if targetHrp then
+        myHrp.CFrame = targetHrp.CFrame * CFrame.new(0, 12, 0)
+    end
+    myHrp.Velocity = Vector3.zero
+    SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+end
+
 local SkillKeys = {Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.F}
 local function FireTimedSkills(targetPlayer)
     if CurrentSkillThread then task.cancel(CurrentSkillThread) end
 
     CurrentSkillThread = task.spawn(function()
-        while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
+        while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) and not FlyMode do
             
             TapKey(Enum.KeyCode.One)
             task.wait(0.05) 
             
             local startTime1 = tick()
             while tick() - startTime1 < 6 do 
-                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
+                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) or FlyMode then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
@@ -225,7 +260,7 @@ local function FireTimedSkills(targetPlayer)
             
             local startTime2 = tick()
             while tick() - startTime2 < 4 do
-                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
+                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) or FlyMode then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
@@ -253,10 +288,9 @@ local function SmoothMoveTo(targetChar, myHrp)
     
     GlobalTargetPos = enemyRoot.Position
     
-    -- منع تكرار إنشاء اللوب
     if platformLoop then platformLoop:Disconnect() end
     platformLoop = RunService.Heartbeat:Connect(function()
-        if myHrp and myHrp.Parent then
+        if myHrp and myHrp.Parent and not FlyMode then
             platform.CFrame = CFrame.new(myHrp.Position.X, myHrp.Position.Y - 3.5, myHrp.Position.Z)
         end
     end)
@@ -275,14 +309,63 @@ local function SmoothMoveTo(targetChar, myHrp)
 end
 
 -- ============================================================
--- ███ اللوب الأساسي (تم إصلاح ترتيب الأولويات) ███
+-- ███ لوب مراقبة الدم والطيران المستقل ███
+-- ============================================================
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        
+        if not IsModuleActive() or not IsAlive() then
+            if FlyMode then
+                FlyMode = false
+                SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
+            end
+            continue
+        end
+        
+        local myHealth = GetMyHealth()
+        
+        -- حالة انخفاض الدم (الهروب)
+        if myHealth <= LOW_HEALTH_FLY and not FlyMode then
+            FlyMode = true
+            if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
+            FlyToSky()
+        end
+        
+        -- حالة العودة (امتلاء الدم)
+        if FlyMode and myHealth >= SAFE_HEALTH_RETURN then
+            FlyMode = false
+            local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myHrp then
+                local currentTarget = nil
+                if AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
+                    currentTarget = AutoHuntModule.SelectedPlayer
+                end
+                ReturnToGround(currentTarget)
+            end
+        end
+        
+        -- التثبيت الصارم بالسماء
+        if FlyMode then
+            local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myHrp and FlyPosition then
+                myHrp.CFrame = CFrame.new(FlyPosition)
+                myHrp.Velocity = Vector3.zero
+                SkyPlatform.CFrame = CFrame.new(FlyPosition.X, FlyPosition.Y - 3, FlyPosition.Z)
+            end
+        end
+    end
+end)
+
+-- ============================================================
+-- ███ اللوب الأساسي للقتال والملاحقة ███
 -- ============================================================
 task.spawn(function()
     while true do
         task.wait()
         
-        if not IsAlive() or not IsModuleActive() then
-            platform.CFrame = CFrame.new(0, -1000, 0)
+        if not IsAlive() or not IsModuleActive() or FlyMode then
+            if not FlyMode then platform.CFrame = CFrame.new(0, -1000, 0) end
             GlobalTargetPos = nil
             if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
             if platformLoop then platformLoop:Disconnect(); platformLoop = nil end
@@ -294,14 +377,8 @@ task.spawn(function()
         local huntTarget = nil
         
         if myHrp then
-            -- ==========================================
-            -- ✅ الأولوية 1: اللاعب المحدد يدوياً
-            -- ==========================================
             if AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
                 huntTarget = AutoHuntModule.SelectedPlayer
-            -- ==========================================
-            -- ✅ الأولوية 2: Kill Nearest
-            -- ==========================================
             elseif AutoHuntModule.KillNearest then
                 local enemies = {}
                 for _, p in pairs(Players:GetPlayers()) do
@@ -316,9 +393,6 @@ task.spawn(function()
                     return distA < distB
                 end)
                 huntTarget = enemies[1]
-            -- ==========================================
-            -- ✅ الأولوية 3: Auto Hunt (يتبع المحدد)
-            -- ==========================================
             elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
                 huntTarget = AutoHuntModule.SelectedPlayer
             end
@@ -372,12 +446,14 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- ============================================================
--- ███ الدوال العامة (تم إصلاح SetSelectedPlayer) ███
+-- ███ الدوال العامة للتحكم ███
 -- ============================================================
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
     if state then 
         AutoHuntModule.KillNearest = false 
+        FlyMode = false
+        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
     else 
         self:Stop() 
     end
@@ -387,13 +463,13 @@ function AutoHuntModule:SetKillNearest(state)
     AutoHuntModule.KillNearest = state
     if state then 
         AutoHuntModule.Enabled = false 
-        -- لا نمسح SelectedPlayer هنا عشان يقدر يرجعله بعدين
+        FlyMode = false
+        SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
     else 
         self:Stop() 
     end
 end
 
--- ✅ تم إصلاح هذه الدالة: الآن تسمح بتعيين أي لاعب
 function AutoHuntModule:SetSelectedPlayer(player)
     if player == nil then
         AutoHuntModule.SelectedPlayer = nil
@@ -401,11 +477,11 @@ function AutoHuntModule:SetSelectedPlayer(player)
         return
     end
     
-    -- ✅ نسمح بتعيين اللاعب حتى لو كان IsValidEnemy ترجع false حالياً
-    -- لأن الحالة قد تتغير (يدخل قتال، يفتح PVP، الخ)
     AutoHuntModule.SelectedPlayer = player
     AutoHuntModule.KillNearest = false
-    AutoHuntModule.Enabled = false -- نعطل Auto Hunt عشان ما يتعارض
+    AutoHuntModule.Enabled = false 
+    FlyMode = false
+    SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
     
     print("[ARAKS] Target set to: " .. player.Name)
 end
@@ -418,9 +494,10 @@ function AutoHuntModule:Stop()
     if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
     if platformLoop then platformLoop:Disconnect(); platformLoop = nil end
     platform.CFrame = CFrame.new(0, -1000, 0)
+    SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
     AutoHuntModule.Enabled = false
     AutoHuntModule.KillNearest = false
-    -- لا نمسح SelectedPlayer هنا عشان يحتفظ بالاختيار
+    FlyMode = false
     GlobalTargetPos = nil
 end
 
