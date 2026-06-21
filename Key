@@ -23,7 +23,7 @@ local Config = {
     Secret = "Amaartyu7",
 
     -- [3] Scripts & Links
-    MainScriptURL = "https://pastefy.app/IoKaqyqr/raw",
+    MainScriptURL = "https://pastefy.app/l79XMcpZ/raw",
 
     -- [4] Social Media Settings
     ShowDiscord = false,
@@ -181,7 +181,7 @@ local function CreateGUI()
     local BG = Instance.new("ImageLabel", MainFrame)
     BG.Size = UDim2.new(1, 0, 1, 0)
     BG.BackgroundTransparency = 1
-    BG.Image = "rbxassetid://75149360654547"
+    BG.Image = "rbxassetid://130559675931581"
     BG.ScaleType = Enum.ScaleType.Crop
 
     local Overlay = Instance.new("Frame", MainFrame)
