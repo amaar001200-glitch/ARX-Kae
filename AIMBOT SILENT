@@ -1,8 +1,8 @@
 -- █ ARAKS HUB AIMBOT + CAMERA LOCK + ANTI-FARM (للاعبين فقط)
 -- ✅ تحسين سرعة التتبع لتناسب حركة الشخصيات السريعة
 -- ✅ إضافة نظام منع الإحداثيات (Anti-Farm) لتجاهل اللاعبين في المناطق المحظورة
+-- ✅ الكاميرا تتجاهل تماماً اللاعبين في المناطق المحظورة
 -- ✅ تكبير Hitbox إلى 95 مع تلوين بنفسجي
--- ✅ تتبع الكاميرا الناعم مع سرعة استجابة محسّنة
 
 local AimbotModule = {}
 
@@ -41,6 +41,7 @@ do
     -- التحقق من أن الموقع ليس محظوراً
     -- ==================================================
     local function IsPositionBlacklisted(position)
+        if not position then return false end
         for _, blackPos in ipairs(BlacklistedPositions) do
             local distance = (position - blackPos).Magnitude
             if distance < 50 then -- مدى 50 متر حول الإحداثية المحظورة
@@ -54,13 +55,13 @@ do
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1000,
         HitboxSize = 95,
-        Prediction = 0.15,    -- زيادة التنبؤ لسرعة الحركة
-        Smoothness = 0.35,    -- زيادة سرعة تتبع الكاميرا
-        AntiFarmRange = 50,   -- مدى منع الإحداثيات
+        Prediction = 0.15,
+        Smoothness = 0.35,
+        AntiFarmRange = 50,
     }
 
     -- ==================================================
-    -- نظام التحقق من العدو
+    -- نظام التحقق من العدو (مع منع الإحداثيات المحظورة)
     -- ==================================================
     local function IsValidEnemy(plr)
         if not plr or plr == player then return false end
@@ -75,7 +76,7 @@ do
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return false end
         
-        -- التحقق من الإحداثيات المحظورة
+        -- 🔥 منع نهائي: إذا كان اللاعب في منطقة محظورة => تجاهل
         if IsPositionBlacklisted(hrp.Position) then
             return false
         end
@@ -119,7 +120,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
     
     -- ==================================================
-    -- الحصول على أقرب لاعب مع تجنب المناطق المحظورة
+    -- الحصول على أقرب لاعب (يتجاهل المناطق المحظورة)
     -- ==================================================
     local function GetNearestEnemy()
         local char = player.Character
@@ -138,6 +139,11 @@ do
                 local hum = pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
                 
                 if hrp and hum and hum.Health > 0 then
+                    -- 🔥 تأكد إضافي: حتى لو مر من الفلتر، نتأكد مرة ثانية
+                    if IsPositionBlacklisted(hrp.Position) then
+                        continue
+                    end
+                    
                     local dist = (hrp.Position - myPos).Magnitude
                     if dist < nearestDist then
                         nearestDist = dist
@@ -150,7 +156,7 @@ do
     end
     
     -- ==================================================
-    -- تطبيق الـ Hitbox
+    -- تطبيق الـ Hitbox (مع منع المناطق المحظورة)
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -159,7 +165,7 @@ do
         local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
         
         if rootPart and humanoid and humanoid.Health > 0 then
-            -- التحقق من أن الهدف ليس في منطقة محظورة
+            -- 🔥 منع تطبيق الهيت بوكس على المناطق المحظورة
             if IsPositionBlacklisted(rootPart.Position) then
                 return
             end
@@ -204,7 +210,7 @@ do
     end
     
     -- ==================================================
-    -- تحديث الهدف مع تنبؤ محسّن للسرعة
+    -- تحديث الهدف (يتجاهل المناطق المحظورة)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
@@ -220,10 +226,37 @@ do
         
         local target = GetNearestEnemy()
         
+        -- 🔥 إذا كان الهدف الحالي في منطقة محظورة، نلغيه فوراً
+        if target then
+            local hrp = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+            if hrp and IsPositionBlacklisted(hrp.Position) then
+                if lastTarget then
+                    ResetHitbox(lastTarget)
+                    lastTarget = nil
+                end
+                CurrentTarget = nil
+                CurrentTargetPos = nil
+                PurpleChams.Visible = false
+                return
+            end
+        end
+        
         if target and target.Character then
             local hrp = target.Character:FindFirstChild(AimbotConfig.TargetPart)
             
             if hrp then
+                -- 🔥 فحص نهائي قبل تعيين الهدف
+                if IsPositionBlacklisted(hrp.Position) then
+                    if lastTarget then
+                        ResetHitbox(lastTarget)
+                        lastTarget = nil
+                    end
+                    CurrentTarget = nil
+                    CurrentTargetPos = nil
+                    PurpleChams.Visible = false
+                    return
+                end
+                
                 if target ~= lastTarget then
                     if lastTarget then
                         ResetHitbox(lastTarget)
@@ -234,11 +267,9 @@ do
                 
                 CurrentTarget = target
                 
-                -- تنبؤ محسّن لسرعة الحركة
                 local velocity = hrp.AssemblyLinearVelocity
                 local currentPos = hrp.Position
                 
-                -- إذا كان الهدف يتحرك بسرعة، نزيد التنبؤ
                 local speed = velocity.Magnitude
                 local predictionMultiplier = 1
                 if speed > 50 then
@@ -266,48 +297,66 @@ do
     end)
     
     -- ==================================================
-    -- CAMERA LOCK مع سرعة استجابة محسّنة
+    -- CAMERA LOCK (تتجاهل المناطق المحظورة تماماً)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end
         
+        -- 🔥 التأكد أن الهدف الحالي ليس في منطقة محظورة
         if CurrentTarget and CurrentTarget.Character then
             local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-            if targetPart and CurrentTargetPos then
-                -- استخدام الموقع المتوقع بدلاً من الموقع الحالي
-                local targetCFrame = CFrame.new(Camera.CFrame.Position, CurrentTargetPos)
-                
-                -- تحسين سرعة التتبع بناءً على سرعة الهدف
-                local smoothness = AimbotConfig.Smoothness
-                local velocity = targetPart.AssemblyLinearVelocity
-                local speed = velocity.Magnitude
-                
-                if speed > 50 then
-                    smoothness = smoothness * 1.3 -- تتبع أسرع للأهداف السريعة
-                elseif speed > 100 then
-                    smoothness = smoothness * 1.6
+            if targetPart then
+                -- 🔥 فحص إضافي قبل تثبيت الكاميرا
+                if IsPositionBlacklisted(targetPart.Position) then
+                    -- إلغاء الهدف فوراً إذا دخل منطقة محظورة
+                    if lastTarget then
+                        ResetHitbox(lastTarget)
+                        lastTarget = nil
+                    end
+                    CurrentTarget = nil
+                    CurrentTargetPos = nil
+                    PurpleChams.Visible = false
+                    return
                 end
                 
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.min(smoothness, 1))
+                if CurrentTargetPos then
+                    local targetCFrame = CFrame.new(Camera.CFrame.Position, CurrentTargetPos)
+                    
+                    local smoothness = AimbotConfig.Smoothness
+                    local velocity = targetPart.AssemblyLinearVelocity
+                    local speed = velocity.Magnitude
+                    
+                    if speed > 50 then
+                        smoothness = smoothness * 1.3
+                    elseif speed > 100 then
+                        smoothness = smoothness * 1.6
+                    end
+                    
+                    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.min(smoothness, 1))
+                end
             end
         end
     end)
     
     -- ==================================================
-    -- صيانة دورية للهيت بوكس
+    -- صيانة دورية (تنظيف المناطق المحظورة)
     -- ==================================================
     task.spawn(function()
         while task.wait(0.1) do
             if getgenv().AimbotActive and lastTarget then
                 if lastTarget:IsA("Player") then 
-                    -- التحقق من أن الهدف ليس في منطقة محظورة
                     local hrp = lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp and not IsPositionBlacklisted(hrp.Position) then
-                        ApplyHitboxSystem(lastTarget)
-                    else
-                        ResetHitbox(lastTarget)
-                        lastTarget = nil
-                        CurrentTarget = nil
+                    if hrp then
+                        -- 🔥 إذا دخل الهدف منطقة محظورة، نلغيه فوراً
+                        if IsPositionBlacklisted(hrp.Position) then
+                            ResetHitbox(lastTarget)
+                            lastTarget = nil
+                            CurrentTarget = nil
+                            CurrentTargetPos = nil
+                            PurpleChams.Visible = false
+                        else
+                            ApplyHitboxSystem(lastTarget)
+                        end
                     end
                 end
             end
