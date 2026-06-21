@@ -1,10 +1,12 @@
--- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR (للاعبين فقط)
+-- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
 -- ✅ الكاميرا فقط بدون أي توجيه ضربات
 -- ✅ Hitbox مكبر 95 مع تلوين بنفسجي
 -- ✅ نظام PVP Radar يظهر حالة اللاعبين (ON/OFF/FIGHT)
 -- ✅ الكاميرا تتبع فقط اللاعبين المشغلين لـ PvP (ON أو FIGHT)
+-- ✅ عند موت الهدف، ينتقل تلقائياً للهدف التالي
+-- ✅ يتجاهل اللاعبين المدمجين (المتضررين)
 
 local AimbotModule = {}
 
@@ -76,7 +78,6 @@ do
             return nil
         end
         
-        -- التحقق من PvP Disabled
         local pvpDisabled = false
         pcall(function()
             pvpDisabled = plr:GetAttribute("PvpDisabled")
@@ -86,7 +87,6 @@ do
             return "OFF", Color3.fromRGB(255, 70, 70)
         end
         
-        -- التحقق من حالة القتال
         local char = plr.Character
         if char then
             local inCombat = false
@@ -99,7 +99,6 @@ do
             end
         end
         
-        -- إذا كان في قتال خلال 12 ثانية الأخيرة
         if FightCache[plr] and (tick() - FightCache[plr]) <= 12 then
             return "FIGHT", Color3.fromRGB(255, 220, 0)
         end
@@ -108,7 +107,7 @@ do
     end
 
     -- ==================================================
-    -- التحقق من أن اللاعب صالح (مع PVP Radar)
+    -- التحقق من أن اللاعب صالح
     -- ==================================================
     local function IsValidPlayer(plr)
         if not plr or plr == player then return false end
@@ -118,7 +117,10 @@ do
         if not char then return false end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then return false end
+        if not hum then return false end
+        
+        -- 🔥 إذا كان ميتاً أو صحته 0 => تجاهل
+        if hum.Health <= 0 then return false end
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return false end
@@ -128,7 +130,7 @@ do
             return false
         end
         
-        -- 🔥 التحقق من PVP: فقط ON أو FIGHT يعتبرون صالحين
+        -- 🔥 التحقق من PVP: فقط ON أو FIGHT
         local state, _ = GetPlayerState(plr)
         if state == "OFF" then
             return false
@@ -138,7 +140,7 @@ do
     end
 
     -- ==================================================
-    -- إنشاء رادار PVP للاعب
+    -- إنشاء رادار PVP
     -- ==================================================
     local function CreateRadar(plr)
         if not RADAR_SETTINGS.Enabled then return end
@@ -216,7 +218,7 @@ do
     end
 
     -- ==================================================
-    -- الحصول على أقرب لاعب (مع PVP و Anti-Farm)
+    -- الحصول على أقرب لاعب صالح
     -- ==================================================
     local function GetNearestPlayer()
         local char = player.Character
@@ -240,7 +242,7 @@ do
                     local dist = (hrp.Position - myPos).Magnitude
                     if dist < nearestDist then
                         nearestDist = dist
-                        nearest = pl.Character
+                        nearest = pl
                     end
                 end
             end
@@ -252,8 +254,8 @@ do
     -- متغيرات Hitbox والتلوين
     -- ==================================================
     local CurrentTarget = nil
-    local CurrentTargetPos = nil
     local lastTarget = nil
+    local targetCharacter = nil
     
     local PurpleChams = Instance.new("BoxHandleAdornment")
     PurpleChams.Size = Vector3.new(4, 6, 4)
@@ -318,7 +320,7 @@ do
     end
 
     -- ==================================================
-    -- تحديث الهدف
+    -- تحديث الهدف (مع إعادة تعيين تلقائية عند الموت)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().CamLockActive then
@@ -327,51 +329,42 @@ do
                 lastTarget = nil
             end
             CurrentTarget = nil
-            CurrentTargetPos = nil
+            targetCharacter = nil
             PurpleChams.Visible = false
             return
         end
         
-        local target = GetNearestPlayer()
-        
-        if target then
-            local hrp = target:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                if IsPositionBlacklisted(hrp.Position) then
-                    if lastTarget then
-                        ResetHitbox(lastTarget)
-                        lastTarget = nil
-                    end
-                    CurrentTarget = nil
-                    CurrentTargetPos = nil
-                    PurpleChams.Visible = false
-                    return
-                end
-                
-                if target ~= lastTarget then
-                    if lastTarget then
-                        ResetHitbox(lastTarget)
-                    end
-                    lastTarget = target
-                    ApplyHitboxSystem(target.Parent)
-                end
-                
-                CurrentTarget = target
-                CurrentTargetPos = hrp.Position
-            end
-        else
-            if lastTarget then
+        -- 🔥 التحقق من أن الهدف الحالي لا يزال صالحاً
+        if lastTarget then
+            local stillValid = IsValidPlayer(lastTarget)
+            if not stillValid then
+                -- الهدف مات أو أصبح OFF أو دخل منطقة محظورة
                 ResetHitbox(lastTarget)
                 lastTarget = nil
+                CurrentTarget = nil
+                targetCharacter = nil
+                PurpleChams.Visible = false
             end
-            CurrentTarget = nil
-            CurrentTargetPos = nil
-            PurpleChams.Visible = false
+        end
+        
+        -- 🔥 البحث عن هدف جديد إذا لم يكن هناك هدف أو الهدف السابق مات
+        if not lastTarget then
+            local newTarget = GetNearestPlayer()
+            if newTarget then
+                lastTarget = newTarget
+                CurrentTarget = newTarget
+                targetCharacter = newTarget.Character
+                ApplyHitboxSystem(newTarget)
+            else
+                CurrentTarget = nil
+                targetCharacter = nil
+                PurpleChams.Visible = false
+            end
         end
     end)
 
     -- ==================================================
-    -- CAMERA LOCK
+    -- CAMERA LOCK (تتبع الهدف الحي فقط)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().CamLockActive then return end
@@ -387,13 +380,30 @@ do
         
         if IsPositionBlacklisted(myHrp.Position) then return end
         
-        if CurrentTarget then
-            local targetPart = CurrentTarget:FindFirstChild("HumanoidRootPart")
+        -- 🔥 التأكد من وجود هدف صالح
+        if CurrentTarget and lastTarget then
+            -- 🔥 تحقق إضافي أن الهدف لا يزال حياً
+            if not IsValidPlayer(lastTarget) then
+                ResetHitbox(lastTarget)
+                lastTarget = nil
+                CurrentTarget = nil
+                targetCharacter = nil
+                PurpleChams.Visible = false
+                return
+            end
+            
+            local targetPart = lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart")
             if targetPart then
                 if IsPositionBlacklisted(targetPart.Position) then
+                    ResetHitbox(lastTarget)
+                    lastTarget = nil
+                    CurrentTarget = nil
+                    targetCharacter = nil
+                    PurpleChams.Visible = false
                     return
                 end
                 
+                -- توجيه الكاميرا فقط
                 local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
                 Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.3)
             end
@@ -401,18 +411,48 @@ do
     end)
 
     -- ==================================================
-    -- صيانة Hitbox
+    -- صيانة Hitbox (تحديث مستمر)
     -- ==================================================
     task.spawn(function()
         while task.wait(0.15) do
             if getgenv().CamLockActive and lastTarget then
-                local hrp = lastTarget:FindFirstChild("HumanoidRootPart")
-                if hrp and not IsPositionBlacklisted(hrp.Position) then
-                    ApplyHitboxSystem(lastTarget.Parent)
+                if IsValidPlayer(lastTarget) then
+                    local hrp = lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp and not IsPositionBlacklisted(hrp.Position) then
+                        ApplyHitboxSystem(lastTarget)
+                    else
+                        ResetHitbox(lastTarget)
+                        lastTarget = nil
+                        CurrentTarget = nil
+                        targetCharacter = nil
+                        PurpleChams.Visible = false
+                    end
+                else
+                    ResetHitbox(lastTarget)
+                    lastTarget = nil
+                    CurrentTarget = nil
+                    targetCharacter = nil
+                    PurpleChams.Visible = false
                 end
             end
         end
     end)
+
+    -- ==================================================
+    -- مراقبة تغيير شخصية الهدف (إذا مات ورجع)
+    -- ==================================================
+    local function OnTargetCharacterAdded()
+        if lastTarget then
+            lastTarget.CharacterAdded:Connect(function(newChar)
+                task.wait(1)
+                if IsValidPlayer(lastTarget) then
+                    CurrentTarget = lastTarget
+                    targetCharacter = newChar
+                    ApplyHitboxSystem(lastTarget)
+                end
+            end)
+        end
+    end
 
     -- ==================================================
     -- إعداد الرادار للاعبين
@@ -474,7 +514,7 @@ do
                 lastTarget = nil
             end
             CurrentTarget = nil
-            CurrentTargetPos = nil
+            targetCharacter = nil
             PurpleChams.Visible = false
         end
     end
