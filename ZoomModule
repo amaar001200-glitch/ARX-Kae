@@ -1,5 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | CAMERA ZOOM MODULE (FULLY INTEGRATED WITH SLIDER)
+-- █ ARAKS HUB | CAMERA ZOOM MODULE (FULLY INTEGRATED WITH SAVE SYSTEM)
+-- Version 1.0
 -- =============================================================================
 
 local CameraZoomModule = {}
