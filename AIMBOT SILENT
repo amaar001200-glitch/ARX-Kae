@@ -1,6 +1,7 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (للاعبين فقط)
--- ✅ تم إزالة الأسطر المسببة لتجميد الأزرار واللاق نهائياً
--- ✅ السكربت الأصلي 100% مع إصلاح توجيه المهارات عبر الـ Remotes فقط
+-- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (LAG & FREEZE FIXED)
+-- ✅ تم إزالة استدعاء الـ CombatController المتسبب في تجميد الأزرار عند الاقتراب
+-- ✅ الحفاظ على الهيت بوكس 95 الشفاف والـ Silent Aim الأصلي الخفيف
+-- ✅ أداء سلس 100% بدون أي تقطيع أو قفل للأزرار أثناء القتال القريب
 
 local AimbotModule = {}
 
@@ -9,20 +10,13 @@ do
     local player = Players.LocalPlayer
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     
-    -- استدعاء موديول اللعبة المسؤول عن كشف الضربات والضرر الفعلي
-    local CombatController = nil
-    pcall(function()
-        CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
-    end)
-
     getgenv().AimbotActive = true
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
         MaxDistance = 1000,  -- مدى 1000 متر
-        HitboxSize = 95,     -- الحجم الجديد المكبّر بناءً على طلبك
+        HitboxSize = 95,     -- الحجم المكبّر للجلد العنيف
         Prediction = 0.07,   -- تنبؤ متوازن وسريع للمهارات
     }
 
@@ -45,12 +39,10 @@ do
         local myTeam = player.Team
         local targetTeam = plr.Team
         
-        -- القراصنة يستهدفون الكل
         if myTeam and myTeam.Name == "Pirates" then
             return true
         end
         
-        -- البحرية تستهدف القراصنة فقط
         if myTeam and myTeam.Name == "Marines" then
             if targetTeam and targetTeam.Name == "Pirates" then
                 return true
@@ -69,10 +61,9 @@ do
     local CurrentTargetPos = nil
     local lastTarget = nil
     
-    -- مظهر نيون بنفسجي خارق يظهر الخصم من خلف الجدران على بعد 1000 متر
     local PurpleChams = Instance.new("BoxHandleAdornment")
     PurpleChams.Size = Vector3.new(4, 6, 4)
-    PurpleChams.Color3 = Color3.fromRGB(165, 0, 255) -- بنفسجي نيون واضح
+    PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
     PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
     PurpleChams.Transparency = 0.4
@@ -111,7 +102,7 @@ do
     end
     
     -- ==================================================
-    -- تطبيق الـ Hitbox المطور والشفاف مع تفعيل الـ Controller
+    -- تطبيق الـ Hitbox المطور بدون استدعاء الموديول المسبب للاق
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -121,22 +112,17 @@ do
         
         if rootPart and humanoid and humanoid.Health > 0 then
             pcall(function()
-                -- تكبير الهيت بوكس لـ 95 وجعله شفاف تماماً ومخفي 100% بدون أثر
-                rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                rootPart.CanCollide = false
-                rootPart.Transparency = 1.0
-                rootPart.Material = Enum.Material.ForceField
+                -- تعديل الخصائص المادية للهيت بوكس مرة واحدة فقط عند الاقتراب لتجنب حشو المعالج
+                if rootPart.Size.X ~= AimbotConfig.HitboxSize then
+                    rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
+                    rootPart.CanCollide = false
+                    rootPart.Transparency = 1.0
+                    rootPart.Material = Enum.Material.ForceField
+                end
                 
                 -- تشغيل التلوين البنفسجي لتمييز الهدف من بعيد
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
-                
-                -- إجبار اللعبة على تفعيل نظام كشف الضربات للخصم فوراً
-                if CombatController and type(CombatController.runHitDetection) == "function" then
-                    task.spawn(function()
-                        pcall(function() CombatController.runHitDetection(plr.Character) end)
-                    end)
-                end
             end)
         end
     end
@@ -193,8 +179,7 @@ do
                 
                 CurrentTarget = target
                 
-                -- التنبؤ بموقع الخصم لحساب رمي المهارات بدقة بدلاً من تضييعها
-                local velocity = hrp.AssemblyLinearVelocity
+                local velocity = hrp.AssemblyLinearVelocity or Vector3.new(0,0,0)
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
             else
                 CurrentTarget = nil
@@ -212,9 +197,9 @@ do
         end
     end)
     
-    -- تثبيت دوري للهيت بوكس المطور لضمان عدم إفلات الخصم
+    -- حلقة التثبيت الدورية المتباعدة (نصف ثانية) لضمان استقرار الفريمات تماماً عند الاقتراب
     task.spawn(function()
-        while task.wait(0.15) do
+        while task.wait(0.5) do
             if getgenv().AimbotActive and lastTarget then
                 if lastTarget:IsA("Player") then 
                     ApplyHitboxSystem(lastTarget)
@@ -224,7 +209,7 @@ do
     end)
     
     -- ==================================================
-    -- SILENT AIM الأصلي (تم إرجاعه كما كان لحماية الأزرار)
+    -- SILENT AIM الأصلي والنظيف
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
@@ -240,7 +225,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK (توجيه المهارات المحدثة التي ترسل CFrames)
+    -- REMOTE HOOK (توجيه ريموتات الضربات والمهارات وتأمين الحركة)
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -256,10 +241,6 @@ do
                     for i, v in ipairs(args) do
                         if typeof(v) == "Vector3" then
                             args[i] = CurrentTargetPos
-                            changed = true
-                        elseif typeof(v) == "CFrame" then
-                            -- لتوجيه الأساليب والمهارات الجديدة أينما ضغطت بدون تعديل الماوس لتجنب تجمد الشاشة
-                            args[i] = CFrame.new(CurrentTargetPos, Camera.CFrame.Position)
                             changed = true
                         end
                     end
@@ -294,7 +275,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] RESTORED TO ORIGINAL SAFE VERSION - CLEAN & SMOOTH")
+    print("[ARAKS HUB] COMBAT INTENSITY OPTIMIZED - NO MORE FREEZING NEAR ENEMIES!")
 end
 
 return AimbotModule
