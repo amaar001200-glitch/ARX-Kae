@@ -1,7 +1,6 @@
 -- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (للاعبين فقط)
--- ✅ تم إرجاع السكربت الأصلي بالكامل لمنع اللاق وتجميد المهارات
--- ✅ تكبير حجم الـ Hitbox السري والشفاف إلى 95 لجلد عنيف
--- ✅ إصلاح التوجيه أينما ضغطت عبر الـ LookVector والـ CFrame للماوس
+-- ✅ تم إزالة الأسطر المسببة لتجميد الأزرار واللاق نهائياً
+-- ✅ السكربت الأصلي 100% مع إصلاح توجيه المهارات عبر الـ Remotes فقط
 
 local AimbotModule = {}
 
@@ -18,7 +17,7 @@ do
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
     end)
 
-    getgenv().AimbotActive = true -- مفعّل تلقائياً
+    getgenv().AimbotActive = true
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
@@ -225,19 +224,15 @@ do
     end)
     
     -- ==================================================
-    -- SILENT AIM (تمت الإصلاح لتوجيه التفاعلات واللمس بدقة)
+    -- SILENT AIM الأصلي (تم إرجاعه كما كان لحماية الأزرار)
     -- ==================================================
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
-        if getgenv().AimbotActive and not checkcaller() and CurrentTarget and CurrentTarget.Character then
-            local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-            if targetPart then
-                -- توجيه الـ Hit والـ UnitRay الخاص بالماوس أينما ضغطت على الشاشة
-                if index == "Hit" then
+        if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
+            if CurrentTarget and CurrentTarget.Character then
+                local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
+                if targetPart then
                     return targetPart.CFrame
-                elseif index == "X" or index == "Y" then
-                    -- تزييف موقع اللمس ليتطابق دائماً مع الهدف البرمجي
-                    return oldIndex(targetPart.CFrame, index)
                 end
             end
         end
@@ -245,7 +240,7 @@ do
     end)
     
     -- ==================================================
-    -- REMOTE HOOK (توجيه ريموتات الضربات والمهارات وتأمين الحركة)
+    -- REMOTE HOOK (توجيه المهارات المحدثة التي ترسل CFrames)
     -- ==================================================
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -256,7 +251,6 @@ do
             if method == "FireServer" or method == "InvokeServer" then
                 local remoteName = tostring(self.Name):lower()
                 
-                -- حماية فلاتر الحركة ريموتس الخاصة بك لمنع أي بطء أو تجميد مرئي
                 if not remoteName:find("dash") and not remoteName:find("move") and not remoteName:find("teleport") and not remoteName:find("spawn") then
                     local changed = false
                     for i, v in ipairs(args) do
@@ -264,7 +258,7 @@ do
                             args[i] = CurrentTargetPos
                             changed = true
                         elseif typeof(v) == "CFrame" then
-                            -- إصلاح التحديث: المهارات الجديدة تعتمد على الـ CFrame بدلاً من الـ Vector3 فقط
+                            -- لتوجيه الأساليب والمهارات الجديدة أينما ضغطت بدون تعديل الماوس لتجنب تجمد الشاشة
                             args[i] = CFrame.new(CurrentTargetPos, Camera.CFrame.Position)
                             changed = true
                         end
@@ -300,7 +294,7 @@ do
         end
     end
     
-    print("[ARAKS HUB] FIXED & RESTORED - السكربت الأصلي يعمل الآن بكفاءة وبدون لاق!")
+    print("[ARAKS HUB] RESTORED TO ORIGINAL SAFE VERSION - CLEAN & SMOOTH")
 end
 
 return AimbotModule
