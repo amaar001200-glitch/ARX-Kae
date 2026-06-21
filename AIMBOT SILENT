@@ -1,7 +1,6 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION (ROOT FIXED)
--- ✅ إصلاح جذري بعد تحديث اللعبة الأخير وإلغاء الريموتات التقليدية
--- ✅ توجيه إجباري مباشر عبر الـ Client للشخصية والكاميرا لحظة الضرب
--- ✅ الحفاظ على الهيت بوكس 95 الشفاف والـ Silent Aim الموزون
+-- █ ARAKS HUB - ADVANCED VIEWPORT EXPERT AIMBOT
+-- ✅ التلاعب المباشر ببصمة اللمس عبر الـ Viewport & Screen Rays
+-- ✅ يلتف حول حماية إلغاء الريموتات بدون التسبب في تجميد الأزرار
 
 local AimbotModule = {}
 
@@ -15,68 +14,29 @@ do
 
     local AimbotConfig = {
         TargetPart = "HumanoidRootPart",
-        MaxDistance = 1000,  -- مدى 1000 متر
-        HitboxSize = 95,     -- الحجم المكبّر
-        Prediction = 0.05,   -- تنبؤ لحظي سريع ومتناسق مع التحديث
+        MaxDistance = 1000,
+        Prediction = 0.05,
     }
 
-    -- ==================================================
-    -- نظام التحقق من العدو (قراصنة ضد الكل / بحرية ضد قراصنة)
-    -- ==================================================
-    local function IsValidEnemy(plr)
-        if not plr or plr == player then return false end
-        if not plr:IsA("Player") then return false end
-        
-        local char = plr.Character
-        if not char then return false end
-        
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then return false end
-        
-        local userId = plr.UserId
-        if userId <= 0 or userId == nil then return false end
-        
-        local myTeam = player.Team
-        local targetTeam = plr.Team
-        
-        if myTeam and myTeam.Name == "Pirates" then return true end
-        if myTeam and myTeam.Name == "Marines" then
-            if targetTeam and targetTeam.Name == "Pirates" then return true else return false end
-        end
-        return true
-    end
-    
     local CurrentTarget = nil
     local CurrentTargetPos = nil
-    local lastTarget = nil
-    
-    local PurpleChams = Instance.new("BoxHandleAdornment")
-    PurpleChams.Size = Vector3.new(4, 6, 4)
-    PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
-    PurpleChams.AlwaysOnTop = true
-    PurpleChams.ZIndex = 10
-    PurpleChams.Transparency = 0.4
-    PurpleChams.Visible = false
-    PurpleChams.Parent = game:GetService("CoreGui")
-    
+
+    -- دالة البحث عن أقرب عدو (نفس منطقك الموزون والنظيف)
     local function GetNearestEnemy()
         local char = player.Character
-        if not char then return nil end
-        
-        local myHrp = char:FindFirstChild("HumanoidRootPart")
+        local myHrp = char and char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return nil end
         
         local nearest = nil
         local nearestDist = AimbotConfig.MaxDistance
-        local myPos = myHrp.Position
         
         for _, pl in ipairs(Players:GetPlayers()) do
-            if IsValidEnemy(pl) then
-                local hrp = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
-                local hum = pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
+            if pl ~= player and pl.Character and pl.Team ~= player.Team then
+                local hrp = pl.Character:FindFirstChild(AimbotConfig.TargetPart)
+                local hum = pl.Character:FindFirstChildOfClass("Humanoid")
                 
                 if hrp and hum and hum.Health > 0 then
-                    local dist = (hrp.Position - myPos).Magnitude
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
                     if dist < nearestDist then
                         nearestDist = dist
                         nearest = pl
@@ -86,121 +46,62 @@ do
         end
         return nearest
     end
-    
-    local function ApplyHitboxSystem(plr)
-        if not plr or not plr.Character then return end
-        local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-        local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
-        
-        if rootPart and humanoid and humanoid.Health > 0 then
-            pcall(function()
-                if rootPart.Size.X ~= AimbotConfig.HitboxSize then
-                    rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
-                    rootPart.CanCollide = false
-                    rootPart.Transparency = 1.0
-                    rootPart.Material = Enum.Material.ForceField
-                end
-                PurpleChams.Adornee = rootPart
-                PurpleChams.Visible = true
-            end)
-        end
-    end
-    
-    local function ResetHitbox(plr)
-        if not plr or not plr.Character then return end
-        local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            pcall(function()
-                rootPart.Size = Vector3.new(2, 2, 2)
-                rootPart.CanCollide = true
-                rootPart.Transparency = 0
-            end)
-        end
-        if rootPart and PurpleChams.Adornee == rootPart then
-            PurpleChams.Visible = false
-            PurpleChams.Adornee = nil
-        end
-    end
-    
-    -- ==================================================
-    -- AIMBOT LOOP + حل التحديث الجذري بتعديل الـ LookVector تلقائياً
-    -- ==================================================
+
+    -- تحديث الهدف المستمر مع التنبؤ
     RunService.RenderStepped:Connect(function()
-        if not getgenv().AimbotActive then
-            if lastTarget then ResetHitbox(lastTarget) lastTarget = nil end
-            CurrentTarget = nil CurrentTargetPos = nil PurpleChams.Visible = false
-            return
-        end
+        if not getgenv().AimbotActive then CurrentTarget = nil return end
         
         local target = GetNearestEnemy()
-        
         if target and target.Character then
             local hrp = target.Character:FindFirstChild(AimbotConfig.TargetPart)
-            local myChar = player.Character
-            local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            
-            if hrp and myHrp then
-                if target ~= lastTarget then
-                    if lastTarget then ResetHitbox(lastTarget) end
-                    lastTarget = target
-                    ApplyHitboxSystem(target)
-                end
-                
+            if hrp then
                 CurrentTarget = target
                 local velocity = hrp.AssemblyLinearVelocity or Vector3.new(0,0,0)
                 CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
-                
-                -- الحل الجذري: إجبار محرك اللعبة (Client) على توجيه واجهة ضربات اللاعب نحو العدو برمجياً لحظة الاشتباك
-                -- هذا يلتف حول إلغاء الريموتات ويجعل مهارات مثل Godhuman تضرب مباشرة وبدقة
-                if myChar:FindFirstChildOfClass("Tool") then
-                    local targetDirection = (CurrentTargetPos - myHrp.Position).Unit
-                    myHrp.CFrame = CFrame.lookAt(myHrp.Position, Vector3.new(CurrentTargetPos.X, myHrp.Position.Y, CurrentTargetPos.Z))
-                end
-            else
-                CurrentTarget = nil CurrentTargetPos = nil PurpleChams.Visible = false
-            end
-        else
-            if lastTarget then ResetHitbox(lastTarget) lastTarget = nil end
-            CurrentTarget = nil CurrentTargetPos = nil PurpleChams.Visible = false
-        end
-    end)
-    
-    task.spawn(function()
-        while task.wait(0.3) do
-            if getgenv().AimbotActive and lastTarget then
-                ApplyHitboxSystem(lastTarget)
+                return
             end
         end
+        CurrentTarget = nil
     end)
+
+    -- ==================================================
+    -- 🎯 الجذور الجديدة: تزوير أشعة الكاميرا والبصمة المحلية
+    -- ==================================================
     
-    -- الـ Silent Aim الاحتياطي لـ Hit الكلاسيكية
+    -- 1. تزوير دالة تحويل نقاط الشاشة إلى أشعة (تستهدف الـ UserInputService الخفي)
+    local oldScreenPointToRay
+    oldScreenPointToRay = hookmetamethod(Camera, "ScreenPointToRay", function(self, x, y, depth)
+        if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
+            local origin = Camera.CFrame.Position
+            local direction = (CurrentTargetPos - origin).Unit
+            return Ray.new(origin, direction)
+        end
+        return oldScreenPointToRay(self, x, y, depth)
+    end)
+
+    -- 2. تزوير دالة الـ Viewport (الأكثر استخداماً في ألعاب الجوال الحديثة لتحديد مكان اللمس)
+    local oldViewportPointToRay
+    oldViewportPointToRay = hookmetamethod(Camera, "ViewportPointToRay", function(self, x, y, depth)
+        if getgenv().AimbotActive and CurrentTargetPos and not checkcaller() then
+            local origin = Camera.CFrame.Position
+            local direction = (CurrentTargetPos - origin).Unit
+            return Ray.new(origin, direction)
+        end
+        return oldViewportPointToRay(self, x, y, depth)
+    end)
+
+    -- 3. تزوير الـ Mouse.Hit الاحتياطي كخط دفاع أخير
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if index == "Hit" and getgenv().AimbotActive and not checkcaller() then
-            if CurrentTarget and CurrentTarget.Character then
-                local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-                if targetPart then
-                    return targetPart.CFrame
-                end
+            if CurrentTargetPos then
+                return CFrame.new(CurrentTargetPos)
             end
         end
         return oldIndex(self, index)
     end)
-    
-    Players.PlayerRemoving:Connect(function(plr)
-        if lastTarget == plr then
-            ResetHitbox(plr) lastTarget = nil CurrentTarget = nil PurpleChams.Visible = false
-        end
-    end)
-    
-    function AimbotModule:SetState(state)
-        getgenv().AimbotActive = state
-        if not state and lastTarget then
-            ResetHitbox(lastTarget) lastTarget = nil CurrentTarget = nil PurpleChams.Visible = false
-        end
-    end
-    
-    print("[ARAKS HUB] ROOT EXPLOIT DEPLOYED - BYPASS NEW COMBAT SYSTEM")
+
+    print("[ARAKS HUB] VIEWPORT SPOOFING ACTIVE - TESTING NEW BASE")
 end
 
 return AimbotModule
