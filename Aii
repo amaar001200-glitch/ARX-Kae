@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (FIXED MARINES PVP LOGIC + SELECT PLAYER)
--- version 2.9.3 (Fixed: Select Player, Marines Logic, Priority System)
+-- █ ARAKS HUB | AUTO HUNT MODULE (FIXED - Select + Auto Hunt Separate)
+-- version 2.9.6 (Fixed: Select Player chooses target, Auto Hunt toggles hunting)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -19,11 +19,6 @@ local RunService = game:GetService("RunService")
 local Net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules.Net
 local RegisterAttack = Net and Net["RE/RegisterAttack"]
 local RegisterHit = Net and Net["RE/RegisterHit"]
-
-local CombatController = nil
-pcall(function()
-    CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
-end)
 
 local TweenSpeed = 350 
 local currentTween = nil
@@ -56,41 +51,23 @@ local function IsInBlacklistedZone(targetPos)
 end
 
 local function GetPlayerState(plr)
-    if not plr or plr == LocalPlayer then
-        return "OFF"
-    end
+    if not plr or plr == LocalPlayer then return "OFF" end
     
     local pvpDisabled = false
-    pcall(function()
-        pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false
-    end)
-    
-    if pvpDisabled then
-        return "OFF"
-    end
+    pcall(function() pvpDisabled = plr:GetAttribute("PvpDisabled") or plr:GetAttribute("PvpEnable") == false end)
+    if pvpDisabled then return "OFF" end
     
     local char = plr.Character
     if char then
         local inCombat = false
-        pcall(function()
-            inCombat = char:GetAttribute("InCombat")
-        end)
-        
-        if inCombat then
-            FightCache[plr] = tick()
-        end
+        pcall(function() inCombat = char:GetAttribute("InCombat") end)
+        if inCombat then FightCache[plr] = tick() end
     end
     
-    if FightCache[plr] and (tick() - FightCache[plr]) <= 12 then
-        return "FIGHT"
-    end
-    
+    if FightCache[plr] and (tick() - FightCache[plr]) <= 12 then return "FIGHT" end
     return "ON"
 end
 
--- ============================================================
--- ███ الدالة الأساسية للتحقق من صحة الهدف (تم إصلاحها) ███
--- ============================================================
 local function IsValidEnemy(plr)
     if not plr or plr == LocalPlayer then return false end
     if not plr:IsA("Player") then return false end
@@ -104,52 +81,27 @@ local function IsValidEnemy(plr)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     
-    if IsInBlacklistedZone(hrp.Position) then
-        return false
-    end
+    if IsInBlacklistedZone(hrp.Position) then return false end
     
     local myTeam = LocalPlayer.Team
     local targetTeam = plr.Team
     local state = GetPlayerState(plr)
     
-    -- إذا الـ PVP مغلق عند الخصم، تجاهله
     if state == "OFF" then return false end
     
-    -- ==========================================
-    -- ✅ الحالة 1: إذا كان هناك لاعب محدد يدوياً
-    -- نسمح باستهدافه بغض النظر عن الفريق
-    -- ==========================================
+    -- ✅ إذا كان هناك لاعب محدد، نسمح باستهدافه
     if AutoHuntModule.SelectedPlayer and AutoHuntModule.SelectedPlayer == plr then
-        -- نسمح بالاستهداف إذا كان PVP شغال
         return state == "ON" or state == "FIGHT"
     end
     
-    -- ==========================================
-    -- ✅ الحالة 2: القراصنة يصيدون أي شخص مشغل الـ PVP
-    -- ==========================================
     if myTeam and myTeam.Name == "Pirates" then
         return state == "ON" or state == "FIGHT"
     end
     
-    -- ==========================================
-    -- ✅ الحالة 3: البحرية (تم الإصلاح الكامل)
-    -- ==========================================
     if myTeam and myTeam.Name == "Marines" then
-        -- لا نستهدف زملاءنا في البحرية أبداً
-        if targetTeam and targetTeam.Name == "Marines" then
-            return false
-        end
-        
-        -- نستهدف القراصنة فقط، أو أي شخص في حالة قتال
-        if (targetTeam and targetTeam.Name == "Pirates") or state == "FIGHT" then
-            return true
-        end
-        
-        -- أي شخص آخر ليس في فريقنا وليس قرصاناً ولا في قتال
-        -- نسمح باستهدافه إذا كان PVP شغال (للبحث عن قراصنة)
-        if not targetTeam or targetTeam.Name ~= "Marines" then
-            return state == "ON"
-        end
+        if targetTeam and targetTeam.Name == "Marines" then return false end
+        if (targetTeam and targetTeam.Name == "Pirates") or state == "FIGHT" then return true end
+        if not targetTeam or targetTeam.Name ~= "Marines" then return state == "ON" end
     end
     
     return false
@@ -172,7 +124,7 @@ local function IsAlive()
 end
 
 local function IsModuleActive()
-    return AutoHuntModule.Enabled or AutoHuntModule.KillNearest or (AutoHuntModule.SelectedPlayer ~= nil)
+    return AutoHuntModule.Enabled or AutoHuntModule.KillNearest
 end
 
 local function TapKey(key)
@@ -188,7 +140,6 @@ local function Attack(target)
         pcall(function()
             RegisterAttack:FireServer(0.5)
             RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
-            
             if tick() - lastHitTick > 0.12 then
                 lastHitTick = tick()
                 RegisterHit:FireServer(target.HumanoidRootPart, {{target, target.HumanoidRootPart}})
@@ -203,14 +154,13 @@ local function FireTimedSkills(targetPlayer)
     if CurrentSkillThread then task.cancel(CurrentSkillThread) end
 
     CurrentSkillThread = task.spawn(function()
-        while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
-            
+        while IsModuleActive() and IsAlive() and AutoHuntModule.SelectedPlayer and IsValidEnemy(targetPlayer) do
             TapKey(Enum.KeyCode.One)
-            task.wait(0.05) 
+            task.wait(0.05)
             
             local startTime1 = tick()
             while tick() - startTime1 < 6 do 
-                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
+                if not IsAlive() or not IsModuleActive() or not AutoHuntModule.SelectedPlayer or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
@@ -225,7 +175,7 @@ local function FireTimedSkills(targetPlayer)
             
             local startTime2 = tick()
             while tick() - startTime2 < 4 do
-                if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
+                if not IsAlive() or not IsModuleActive() or not AutoHuntModule.SelectedPlayer or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
@@ -253,7 +203,6 @@ local function SmoothMoveTo(targetChar, myHrp)
     
     GlobalTargetPos = enemyRoot.Position
     
-    -- منع تكرار إنشاء اللوب
     if platformLoop then platformLoop:Disconnect() end
     platformLoop = RunService.Heartbeat:Connect(function()
         if myHrp and myHrp.Parent then
@@ -270,18 +219,17 @@ local function SmoothMoveTo(targetChar, myHrp)
     
     if platformLoop then platformLoop:Disconnect(); platformLoop = nil end
     currentTween = nil
-    
     myHrp.Velocity = Vector3.new(0,0,0)
 end
 
 -- ============================================================
--- ███ اللوب الأساسي (تم إصلاح ترتيب الأولويات) ███
+-- ███ اللوب الأساسي - يعمل فقط عند تفعيل Auto Hunt Target
 -- ============================================================
 task.spawn(function()
     while true do
         task.wait()
         
-        if not IsAlive() or not IsModuleActive() then
+        if not IsAlive() or not IsModuleActive() or not AutoHuntModule.SelectedPlayer then
             platform.CFrame = CFrame.new(0, -1000, 0)
             GlobalTargetPos = nil
             if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
@@ -294,14 +242,10 @@ task.spawn(function()
         local huntTarget = nil
         
         if myHrp then
-            -- ==========================================
-            -- ✅ الأولوية 1: اللاعب المحدد يدوياً
-            -- ==========================================
-            if AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
+            -- ✅ الأولوية: اللاعب المحدد (إذا كان Auto Hunt مفعل)
+            if AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
                 huntTarget = AutoHuntModule.SelectedPlayer
-            -- ==========================================
-            -- ✅ الأولوية 2: Kill Nearest
-            -- ==========================================
+            -- ✅ Kill Nearest (منفصل)
             elseif AutoHuntModule.KillNearest then
                 local enemies = {}
                 for _, p in pairs(Players:GetPlayers()) do
@@ -309,18 +253,12 @@ task.spawn(function()
                         table.insert(enemies, p) 
                     end
                 end
-                
                 table.sort(enemies, function(a, b)
                     local distA = (a.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     local distB = (b.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
                     return distA < distB
                 end)
                 huntTarget = enemies[1]
-            -- ==========================================
-            -- ✅ الأولوية 3: Auto Hunt (يتبع المحدد)
-            -- ==========================================
-            elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
-                huntTarget = AutoHuntModule.SelectedPlayer
             end
         end
         
@@ -372,45 +310,50 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 -- ============================================================
--- ███ الدوال العامة (تم إصلاح SetSelectedPlayer) ███
+-- ███ الدوال العامة (منفصلة: اختيار + تفعيل) ███
 -- ============================================================
+
+-- ✅ زر "Select Player": يختار اللاعب فقط (ما يروح لحاله)
+function AutoHuntModule:SetSelectedPlayer(player)
+    if player == nil then
+        AutoHuntModule.SelectedPlayer = nil
+        print("[ARAKS] Target cleared")
+        return
+    end
+    
+    AutoHuntModule.SelectedPlayer = player
+    -- ✅ لا نفعّل Auto Hunt تلقائياً، يبقى على حالته
+    print("[ARAKS] Target set to: " .. player.Name .. " (Auto Hunt: " .. tostring(AutoHuntModule.Enabled) .. ")")
+end
+
+-- ✅ زر "Auto Hunt Target": يفعّل/يعطّل المطاردة للاعب المختار
 function AutoHuntModule:SetEnabled(state)
     AutoHuntModule.Enabled = state
     if state then 
         AutoHuntModule.KillNearest = false 
+        if AutoHuntModule.SelectedPlayer then
+            print("[ARAKS] Auto Hunt ENABLED - Hunting: " .. AutoHuntModule.SelectedPlayer.Name)
+        else
+            print("[ARAKS] Auto Hunt ENABLED - No target selected! Use 'Select Player' first.")
+        end
     else 
+        print("[ARAKS] Auto Hunt DISABLED")
         self:Stop() 
     end
 end
 
+-- ✅ زر "Kill Nearest": يعمل بشكل مستقل
 function AutoHuntModule:SetKillNearest(state)
     AutoHuntModule.KillNearest = state
     if state then 
         AutoHuntModule.Enabled = false 
-        -- لا نمسح SelectedPlayer هنا عشان يقدر يرجعله بعدين
+        print("[ARAKS] Kill Nearest ENABLED")
     else 
+        print("[ARAKS] Kill Nearest DISABLED")
         self:Stop() 
     end
 end
 
--- ✅ تم إصلاح هذه الدالة: الآن تسمح بتعيين أي لاعب
-function AutoHuntModule:SetSelectedPlayer(player)
-    if player == nil then
-        AutoHuntModule.SelectedPlayer = nil
-        self:Stop()
-        return
-    end
-    
-    -- ✅ نسمح بتعيين اللاعب حتى لو كان IsValidEnemy ترجع false حالياً
-    -- لأن الحالة قد تتغير (يدخل قتال، يفتح PVP، الخ)
-    AutoHuntModule.SelectedPlayer = player
-    AutoHuntModule.KillNearest = false
-    AutoHuntModule.Enabled = false -- نعطل Auto Hunt عشان ما يتعارض
-    
-    print("[ARAKS] Target set to: " .. player.Name)
-end
-
-function AutoHuntModule:ResetAllHitboxes() self:Stop() end
 function AutoHuntModule:GetSelectedPlayer() return AutoHuntModule.SelectedPlayer end
 
 function AutoHuntModule:Stop()
@@ -418,9 +361,6 @@ function AutoHuntModule:Stop()
     if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
     if platformLoop then platformLoop:Disconnect(); platformLoop = nil end
     platform.CFrame = CFrame.new(0, -1000, 0)
-    AutoHuntModule.Enabled = false
-    AutoHuntModule.KillNearest = false
-    -- لا نمسح SelectedPlayer هنا عشان يحتفظ بالاختيار
     GlobalTargetPos = nil
 end
 
