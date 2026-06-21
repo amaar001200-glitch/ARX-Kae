@@ -7,7 +7,7 @@ local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
-local CurrentCamera = Workspace.CurrentCamera
+local CurrentCamera = workspace.CurrentCamera
 
 local Clamp = math.clamp
 local Huge = math.huge
@@ -32,6 +32,17 @@ local lastTargetUpdate = 0
 local ZSkillsEnabled = false
 local TargetInfo = false
 local uiConn = nil
+
+-- 🔥 نظام الكاميرا الجديد (بدلاً من النظام القديم)
+local function CameraLock(target)
+    if not target or not target:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local targetPart = target.HumanoidRootPart
+    local targetCFrame = CFrame.new(CurrentCamera.CFrame.Position, targetPart.Position)
+    CurrentCamera.CFrame = CurrentCamera.CFrame:Lerp(targetCFrame, 0.3)
+end
 
 local function clearConnections()
 	for i = #characterConnections, 1, -1 do
@@ -261,9 +272,6 @@ local function stopAimlock()
 	end
 end
 
--- ==================================================
--- نظام الكاميرا الجديد (تم استبداله)
--- ==================================================
 local function startAimlock()
 	if not ZSkillsEnabled or aimlockActive then
 		return
@@ -277,18 +285,15 @@ local function startAimlock()
 
 	aimlockActive = true
 
-	-- الكاميرا الجديدة مع Smoothness
+	-- 🔥 نظام الكاميرا الجديد بدلاً من القديم
 	aimRenderConn = RunService.RenderStepped:Connect(function()
 		if not ZSkillsEnabled then
 			stopAimlock()
 			return
 		end
 
-		if aimlockActive and nearestTarget and nearestTarget:FindFirstChild("HumanoidRootPart") then
-			-- استخدام Lerp لحركة ناعمة
-			local targetPos = nearestTarget.HumanoidRootPart.Position
-			local targetCFrame = CFrame.new(CurrentCamera.CFrame.Position, targetPos)
-			CurrentCamera.CFrame = CurrentCamera.CFrame:Lerp(targetCFrame, 0.25)
+		if aimlockActive and nearestTarget then
+			CameraLock(nearestTarget)
 		else
 			stopAimlock()
 		end
