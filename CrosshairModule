@@ -1,0 +1,125 @@
+-- =============================================================================
+-- █ ARAKS HUB | PURPLE CROSSHAIR (+) FOR MOBILE SHIFT LOCK
+-- version 1.5 (Ultra-Fine Pixel Adjustment - Shifted Slightly Right)
+-- =============================================================================
+
+local CrosshairModule = {}
+
+do
+    local Players = game:GetService("Players")
+    local CoreGui = game:GetService("CoreGui")
+    
+    local CrosshairGui = nil
+    local CrosshairContainer = nil
+    local HorizontalLine = nil
+    local VerticalLine = nil
+    local Enabled = false
+    
+    local function CreateCrosshair()
+        -- حذف القديم إن وجد
+        if CrosshairGui then 
+            pcall(function() CrosshairGui:Destroy() end)
+            CrosshairGui = nil
+        end
+        
+        -- إنشاء الواجهة
+        CrosshairGui = Instance.new("ScreenGui")
+        CrosshairGui.Name = "ARAKS_MobileCrosshairGui"
+        CrosshairGui.ResetOnSpawn = false
+        
+        if syn and syn.protect_gui then
+            syn.protect_gui(CrosshairGui)
+            CrosshairGui.Parent = CoreGui
+        elseif getgui then
+            CrosshairGui.Parent = getgui()
+        else
+            CrosshairGui.Parent = CoreGui
+        end
+        
+        -- الحاوية الرئيسية
+        CrosshairContainer = Instance.new("Frame")
+        CrosshairContainer.Name = "CrosshairContainer"
+        CrosshairContainer.Size = UDim2.new(0, 40, 0, 40)
+        CrosshairContainer.Position = UDim2.new(0.5, -1, 0.337, 0)
+        CrosshairContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+        CrosshairContainer.BackgroundTransparency = 1
+        CrosshairContainer.Parent = CrosshairGui
+        
+        -- إعدادات الأبعاد واللون
+        local CrosshairColor = Color3.fromRGB(168, 85, 247)
+        local LineThickness = 4
+        local LineLength = 30
+        
+        -- الخط الأفقي
+        HorizontalLine = Instance.new("Frame")
+        HorizontalLine.Name = "HorizontalLine"
+        HorizontalLine.Size = UDim2.new(0, LineLength, 0, LineThickness)
+        HorizontalLine.Position = UDim2.new(0.5, 0, 0.5, 0)
+        HorizontalLine.AnchorPoint = Vector2.new(0.5, 0.5)
+        HorizontalLine.BackgroundColor3 = CrosshairColor
+        HorizontalLine.BorderSizePixel = 0
+        HorizontalLine.Parent = CrosshairContainer
+        
+        -- الخط العمودي
+        VerticalLine = Instance.new("Frame")
+        VerticalLine.Name = "VerticalLine"
+        VerticalLine.Size = UDim2.new(0, LineThickness, 0, LineLength)
+        VerticalLine.Position = UDim2.new(0.5, 0, 0.5, 0)
+        VerticalLine.AnchorPoint = Vector2.new(0.5, 0.5)
+        VerticalLine.BackgroundColor3 = CrosshairColor
+        VerticalLine.BorderSizePixel = 0
+        VerticalLine.Parent = CrosshairContainer
+        
+        -- تحديد أسود ناعم
+        local StrokeH = Instance.new("UIStroke")
+        StrokeH.Thickness = 1.2
+        StrokeH.Color = Color3.fromRGB(0, 0, 0)
+        StrokeH.Transparency = 0.15
+        StrokeH.Parent = HorizontalLine
+        
+        local StrokeV = Instance.new("UIStroke")
+        StrokeV.Thickness = 1.2
+        StrokeV.Color = Color3.fromRGB(0, 0, 0)
+        StrokeV.Transparency = 0.15
+        StrokeV.Parent = VerticalLine
+        
+        print("[ARAKS] Crosshair Created Successfully")
+    end
+    
+    -- تشغيل الكروسير
+    function CrosshairModule:Enable()
+        if Enabled then return end
+        Enabled = true
+        CreateCrosshair()
+        print("[ARAKS] Crosshair ENABLED")
+    end
+    
+    -- إيقاف الكروسير
+    function CrosshairModule:Disable()
+        Enabled = false
+        if CrosshairGui then 
+            pcall(function() CrosshairGui:Destroy() end)
+            CrosshairGui = nil
+            CrosshairContainer = nil
+            HorizontalLine = nil
+            VerticalLine = nil
+        end
+        print("[ARAKS] Crosshair DISABLED")
+    end
+    
+    -- تبديل الحالة
+    function CrosshairModule:Toggle()
+        if Enabled then
+            self:Disable()
+        else
+            self:Enable()
+        end
+    end
+    
+    -- التحقق من الحالة
+    function CrosshairModule:IsEnabled()
+        return Enabled
+    end
+end
+
+return CrosshairModule
