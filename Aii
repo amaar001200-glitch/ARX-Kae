@@ -1,6 +1,6 @@
 -- =============================================================================
 -- █ ARAKS HUB | AUTO HUNT MODULE (FIXED MARINES PVP LOGIC + SKY ESCAPE SYSTEM)
--- version 2.9.4 (Integrated: Sky Fly on Low Health, Target Selection Fix)
+-- version 2.9.5 (Fixed: Target Selection Won't Attack Until Enabled Is True)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -178,8 +178,9 @@ local function GetMyHealth()
     return hum and hum.Health or 0
 end
 
+-- ✅ تعديل: الموديل يعتبر شغال فقط لو كان زر Enabled أو KillNearest شغالين فعلياً
 local function IsModuleActive()
-    return AutoHuntModule.Enabled or AutoHuntModule.KillNearest or (AutoHuntModule.SelectedPlayer ~= nil)
+    return AutoHuntModule.Enabled or AutoHuntModule.KillNearest
 end
 
 local function TapKey(key)
@@ -377,7 +378,8 @@ task.spawn(function()
         local huntTarget = nil
         
         if myHrp then
-            if AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
+            -- الحين الأولوية للـ SelectedPlayer فقط إذا كان زر الـ Enabled مفعل يدوياً
+            if AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
                 huntTarget = AutoHuntModule.SelectedPlayer
             elseif AutoHuntModule.KillNearest then
                 local enemies = {}
@@ -393,8 +395,6 @@ task.spawn(function()
                     return distA < distB
                 end)
                 huntTarget = enemies[1]
-            elseif AutoHuntModule.Enabled and AutoHuntModule.SelectedPlayer and IsValidEnemy(AutoHuntModule.SelectedPlayer) then
-                huntTarget = AutoHuntModule.SelectedPlayer
             end
         end
         
@@ -470,6 +470,7 @@ function AutoHuntModule:SetKillNearest(state)
     end
 end
 
+-- ✅ تم تعديلها جذرياً: الآن فقط تخزن اللاعب المختار ولا تشغله فجأة
 function AutoHuntModule:SetSelectedPlayer(player)
     if player == nil then
         AutoHuntModule.SelectedPlayer = nil
@@ -478,12 +479,8 @@ function AutoHuntModule:SetSelectedPlayer(player)
     end
     
     AutoHuntModule.SelectedPlayer = player
-    AutoHuntModule.KillNearest = false
-    AutoHuntModule.Enabled = false 
-    FlyMode = false
-    SkyPlatform.CFrame = CFrame.new(0, -1000, 0)
-    
-    print("[ARAKS] Target set to: " .. player.Name)
+    -- تمت إزالة الأوامر التلقائية للإيقاف والتشغيل هنا لتنتظر ضغطة الزر الخاص بك
+    print("[ARAKS] Target locked in memory: " .. player.Name .. " (Waiting for Enable toggle...)")
 end
 
 function AutoHuntModule:ResetAllHitboxes() self:Stop() end
