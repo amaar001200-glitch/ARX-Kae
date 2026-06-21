@@ -1,6 +1,6 @@
 -- █ ARAKS HUB CAMERA LOCK + ANTI-FARM (للاعبين فقط)
--- ✅ منع تام للاعبين في المناطق المحظورة (حتى عند الموت)
--- ✅ إزالة أي تعارض في الإحداثيات
+-- ✅ تشغيل تلقائي فور الحقن
+-- ✅ منع تام للاعبين في المناطق المحظورة
 -- ✅ الكاميرا فقط بدون أي توجيه ضربات
 
 local AimbotModule = {}
@@ -11,7 +11,8 @@ do
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
     
-    getgenv().CamLockActive = false
+    -- 🔥 تفعيل تلقائي فوراً
+    getgenv().CamLockActive = true
 
     -- ==================================================
     -- قائمة الإحداثيات المحظورة (Anti-Farm)
@@ -44,27 +45,22 @@ do
     end
 
     -- ==================================================
-    -- التحقق من أن اللاعب صالح (يتجاهل المناطق المحظورة تماماً)
+    -- التحقق من أن اللاعب صالح
     -- ==================================================
     local function IsValidPlayer(plr)
-        -- تجاهل نفسك
         if not plr or plr == player then return false end
         if not plr:IsA("Player") then return false end
         
-        -- تجاهل إذا كان اللاعب ميت أو ليس له شخصية
         local char = plr.Character
         if not char then return false end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return false end
-        
-        -- ✅ مهم: حتى لو كان ميتاً (Health <= 0) نعتبره غير صالح
-        if hum.Health <= 0 then return false end
+        if not hum or hum.Health <= 0 then return false end
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return false end
         
-        -- 🔥 منع نهائي: أي لاعب في منطقة محظورة = تجاهل
+        -- 🔥 منع اللاعبين في المناطق المحظورة
         if IsPositionBlacklisted(hrp.Position) then
             return false
         end
@@ -73,7 +69,7 @@ do
     end
 
     -- ==================================================
-    -- الحصول على أقرب لاعب (يتجاهل المناطق المحظورة)
+    -- الحصول على أقرب لاعب
     -- ==================================================
     local function GetNearestPlayer()
         local char = player.Character
@@ -82,7 +78,7 @@ do
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return nil end
         
-        -- 🔥 تأكد أنك لست في منطقة محظورة
+        -- 🔥 إذا كنت في منطقة محظورة، لا تعمل
         if IsPositionBlacklisted(myHrp.Position) then
             return nil
         end
@@ -107,28 +103,29 @@ do
     end
 
     -- ==================================================
-    -- CAMERA LOCK (تثبيت الكاميرا فقط)
+    -- CAMERA LOCK (تشغيل تلقائي)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
+        -- 🔥 تعمل تلقائياً بدون need to set CamLockActive
         if not getgenv().CamLockActive then return end
         
-        -- 🔥 تأكد أنك لست ميتاً
         local char = player.Character
         if not char then return end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return end
         
-        -- 🔥 تأكد أنك لست في منطقة محظورة
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
+        
+        -- 🔥 إذا كنت في منطقة محظورة، أوقف الكاميرا
         if IsPositionBlacklisted(myHrp.Position) then return end
         
         local target = GetNearestPlayer()
         if target then
             local targetPart = target:FindFirstChild("HumanoidRootPart")
             if targetPart then
-                -- 🔥 تأكد نهائي أن الهدف ليس في منطقة محظورة
+                -- 🔥 تأكد أن الهدف ليس في منطقة محظورة
                 if IsPositionBlacklisted(targetPart.Position) then
                     return
                 end
@@ -141,14 +138,14 @@ do
     end)
 
     -- ==================================================
-    -- API
+    -- API للتحكم اليدوي (اختياري)
     -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().CamLockActive = state
     end
 
-    print("[ARAKS HUB] CAMERA LOCK + ANTI-FARM ACTIVATED!")
-    print("[ARAKS HUB] تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
+    print("[ARAKS HUB] ✅ CAMERA LOCK ACTIVATED - الكاميرا تعمل الآن!")
+    print("[ARAKS HUB] 🚫 تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
 end
 
 return AimbotModule
