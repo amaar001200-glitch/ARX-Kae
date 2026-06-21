@@ -1,9 +1,8 @@
--- █ ARAKS HUB AIMBOT + COMBAT CONTROLLER INTEGRATION + CAMERA LOCK (للاعبين فقط)
--- ✅ تم دمج نظام الـ CombatController الفعلي لتأكيد الضربات مليون بالمية
--- ✅ تكبير حجم الـ Hitbox السري والشفاف إلى 95 لجلد عنيف
--- ✅ المدى 1000 متر حقيقي وبدون تجميد للخصوم أو للاعب الخاص بك
--- ✅ تم إلغاء الخط وتلوين جسم الخصم بالبنفسجي (Chams) ليظهر من خلف الجدران
--- ✅ نظام تتبع الكاميرا الناعم بدلاً من توجيه الضربات
+-- █ ARAKS HUB AIMBOT + CAMERA LOCK + ANTI-FARM (للاعبين فقط)
+-- ✅ تحسين سرعة التتبع لتناسب حركة الشخصيات السريعة
+-- ✅ إضافة نظام منع الإحداثيات (Anti-Farm) لتجاهل اللاعبين في المناطق المحظورة
+-- ✅ تكبير Hitbox إلى 95 مع تلوين بنفسجي
+-- ✅ تتبع الكاميرا الناعم مع سرعة استجابة محسّنة
 
 local AimbotModule = {}
 
@@ -14,7 +13,7 @@ do
     local Camera = workspace.CurrentCamera
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     
-    -- استدعاء موديول اللعبة المسؤول عن كشف الضربات والضرر الفعلي
+    -- استدعاء موديول اللعبة
     local CombatController = nil
     pcall(function()
         CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
@@ -22,16 +21,46 @@ do
 
     getgenv().AimbotActive = false
 
-    local AimbotConfig = {
-        TargetPart = "HumanoidRootPart",
-        MaxDistance = 1000,  -- مدى 1000 متر
-        HitboxSize = 95,     -- الحجم الجديد المكبّر بناءً على طلبك
-        Prediction = 0.07,   -- تنبؤ متوازن وسريع للمهارات
-        Smoothness = 0.2,    -- نسبة نعومة الكاميرا
+    -- ==================================================
+    -- قائمة الإحداثيات المحظورة (Anti-Farm)
+    -- ==================================================
+    local BlacklistedPositions = {
+        Vector3.new(-11.26, 19.31, 2827.25),
+        Vector3.new(-10.01, 35.51, 2732.26),
+        Vector3.new(-380.55, 73.05, 303.43),
+        Vector3.new(-6471.88, 305.41, -4730.00),
+        Vector3.new(-359.07, 20.64, 5535.89),
+        Vector3.new(-111.14, 10.64, 5458.43),
+        Vector3.new(-484.06, 10.64, 5345.74),
+        Vector3.new(-5013.28, 314.55, -3006.84),
+        Vector3.new(-12526.82, 336.94, -7491.79),
+        Vector3.new(-16228.93, 9.09, 375.49)
     }
 
     -- ==================================================
-    -- نظام التحقق من العدو (قراصنة ضد الكل / بحرية ضد قراصنة)
+    -- التحقق من أن الموقع ليس محظوراً
+    -- ==================================================
+    local function IsPositionBlacklisted(position)
+        for _, blackPos in ipairs(BlacklistedPositions) do
+            local distance = (position - blackPos).Magnitude
+            if distance < 50 then -- مدى 50 متر حول الإحداثية المحظورة
+                return true
+            end
+        end
+        return false
+    end
+
+    local AimbotConfig = {
+        TargetPart = "HumanoidRootPart",
+        MaxDistance = 1000,
+        HitboxSize = 95,
+        Prediction = 0.15,    -- زيادة التنبؤ لسرعة الحركة
+        Smoothness = 0.35,    -- زيادة سرعة تتبع الكاميرا
+        AntiFarmRange = 50,   -- مدى منع الإحداثيات
+    }
+
+    -- ==================================================
+    -- نظام التحقق من العدو
     -- ==================================================
     local function IsValidEnemy(plr)
         if not plr or plr == player then return false end
@@ -43,18 +72,24 @@ do
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return false end
         
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return false end
+        
+        -- التحقق من الإحداثيات المحظورة
+        if IsPositionBlacklisted(hrp.Position) then
+            return false
+        end
+        
         local userId = plr.UserId
         if userId <= 0 or userId == nil then return false end
         
         local myTeam = player.Team
         local targetTeam = plr.Team
         
-        -- القراصنة يستهدفون الكل
         if myTeam and myTeam.Name == "Pirates" then
             return true
         end
         
-        -- البحرية تستهدف القراصنة فقط
         if myTeam and myTeam.Name == "Marines" then
             if targetTeam and targetTeam.Name == "Pirates" then
                 return true
@@ -67,16 +102,16 @@ do
     end
     
     -- ==================================================
-    -- المتغيرات وصناعة التلوين البنفسجي للمسافات البعيدة
+    -- المتغيرات والتلوين البنفسجي
     -- ==================================================
     local CurrentTarget = nil
     local CurrentTargetPos = nil
     local lastTarget = nil
+    local lastTargetPos = nil
     
-    -- مظهر نيون بنفسجي خارق يظهر الخصم من خلف الجدران على بعد 1000 متر
     local PurpleChams = Instance.new("BoxHandleAdornment")
     PurpleChams.Size = Vector3.new(4, 6, 4)
-    PurpleChams.Color3 = Color3.fromRGB(165, 0, 255) -- بنفسجي نيون واضح
+    PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
     PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
     PurpleChams.Transparency = 0.4
@@ -84,7 +119,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
     
     -- ==================================================
-    -- الحصول على أقرب لاعب (مدى 1000)
+    -- الحصول على أقرب لاعب مع تجنب المناطق المحظورة
     -- ==================================================
     local function GetNearestEnemy()
         local char = player.Character
@@ -115,7 +150,7 @@ do
     end
     
     -- ==================================================
-    -- تطبيق الـ Hitbox المطور والشفاف مع تفعيل الـ Controller
+    -- تطبيق الـ Hitbox
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -124,18 +159,20 @@ do
         local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
         
         if rootPart and humanoid and humanoid.Health > 0 then
+            -- التحقق من أن الهدف ليس في منطقة محظورة
+            if IsPositionBlacklisted(rootPart.Position) then
+                return
+            end
+            
             pcall(function()
-                -- تكبير الهيت بوكس لـ 95 وجعله شفاف تماماً ومخفي 100% بدون أثر
                 rootPart.Size = Vector3.new(AimbotConfig.HitboxSize, AimbotConfig.HitboxSize, AimbotConfig.HitboxSize)
                 rootPart.CanCollide = false
                 rootPart.Transparency = 1.0
                 rootPart.Material = Enum.Material.ForceField
                 
-                -- تشغيل التلوين البنفسجي لتمييز الهدف من بعيد
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
-                -- إجبار اللعبة على تفعيل نظام كشف الضربات للخصم فوراً
                 if CombatController and type(CombatController.runHitDetection) == "function" then
                     task.spawn(function()
                         pcall(function() CombatController.runHitDetection(plr.Character) end)
@@ -146,7 +183,7 @@ do
     end
     
     -- ==================================================
-    -- إعادة ضبط الـ Hitbox عند إلغاء الهدف
+    -- إعادة ضبط الـ Hitbox
     -- ==================================================
     local function ResetHitbox(plr)
         if not plr or not plr.Character then return end
@@ -167,7 +204,7 @@ do
     end
     
     -- ==================================================
-    -- AIMBOT UPDATE LOOP (تحديث الهدف فقط)
+    -- تحديث الهدف مع تنبؤ محسّن للسرعة
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then
@@ -197,9 +234,21 @@ do
                 
                 CurrentTarget = target
                 
-                -- حساب موقع الخصم للكاميرا
+                -- تنبؤ محسّن لسرعة الحركة
                 local velocity = hrp.AssemblyLinearVelocity
-                CurrentTargetPos = hrp.Position + (velocity * AimbotConfig.Prediction)
+                local currentPos = hrp.Position
+                
+                -- إذا كان الهدف يتحرك بسرعة، نزيد التنبؤ
+                local speed = velocity.Magnitude
+                local predictionMultiplier = 1
+                if speed > 50 then
+                    predictionMultiplier = 1.5
+                elseif speed > 100 then
+                    predictionMultiplier = 2
+                end
+                
+                CurrentTargetPos = currentPos + (velocity * AimbotConfig.Prediction * predictionMultiplier)
+                lastTargetPos = currentPos
             else
                 CurrentTarget = nil
                 CurrentTargetPos = nil
@@ -217,33 +266,57 @@ do
     end)
     
     -- ==================================================
-    -- CAMERA LOCK (توجيه الكاميرا بدلاً من الضربات)
+    -- CAMERA LOCK مع سرعة استجابة محسّنة
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end
         
         if CurrentTarget and CurrentTarget.Character then
             local targetPart = CurrentTarget.Character:FindFirstChild(AimbotConfig.TargetPart)
-            if targetPart then
-                -- توجيه الكاميرا بسلاسة نحو الهدف
-                local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, AimbotConfig.Smoothness)
+            if targetPart and CurrentTargetPos then
+                -- استخدام الموقع المتوقع بدلاً من الموقع الحالي
+                local targetCFrame = CFrame.new(Camera.CFrame.Position, CurrentTargetPos)
+                
+                -- تحسين سرعة التتبع بناءً على سرعة الهدف
+                local smoothness = AimbotConfig.Smoothness
+                local velocity = targetPart.AssemblyLinearVelocity
+                local speed = velocity.Magnitude
+                
+                if speed > 50 then
+                    smoothness = smoothness * 1.3 -- تتبع أسرع للأهداف السريعة
+                elseif speed > 100 then
+                    smoothness = smoothness * 1.6
+                end
+                
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.min(smoothness, 1))
             end
         end
     end)
     
-    -- تثبيت دوري للهيت بوكس المطور لضمان عدم إفلات الخصم
+    -- ==================================================
+    -- صيانة دورية للهيت بوكس
+    -- ==================================================
     task.spawn(function()
-        while task.wait(0.15) do
+        while task.wait(0.1) do
             if getgenv().AimbotActive and lastTarget then
                 if lastTarget:IsA("Player") then 
-                    ApplyHitboxSystem(lastTarget)
+                    -- التحقق من أن الهدف ليس في منطقة محظورة
+                    local hrp = lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp and not IsPositionBlacklisted(hrp.Position) then
+                        ApplyHitboxSystem(lastTarget)
+                    else
+                        ResetHitbox(lastTarget)
+                        lastTarget = nil
+                        CurrentTarget = nil
+                    end
                 end
             end
         end
     end)
     
-    -- تنظيف فوري عند خروج اللاعب
+    -- ==================================================
+    -- تنظيف عند خروج اللاعب
+    -- ==================================================
     Players.PlayerRemoving:Connect(function(plr)
         if lastTarget == plr then
             ResetHitbox(plr)
@@ -253,7 +326,9 @@ do
         end
     end)
     
-    -- API تشغيل وإيقاف السكربت
+    -- ==================================================
+    -- API
+    -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
         if not state then
@@ -267,7 +342,8 @@ do
         end
     end
     
-    print("[ARAKS HUB] CAMERA LOCK + HITBOX SYSTEM ACTIVATED - الكاميرا مثبتة والهيت بوكس مكبر!")
+    print("[ARAKS HUB] CAMERA LOCK + ANTI-FARM ACTIVATED!")
+    print("[ARAKS HUB] تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
 end
 
 return AimbotModule
