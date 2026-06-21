@@ -2,11 +2,11 @@
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
 -- ✅ الكاميرا فقط بدون أي توجيه ضربات
--- ✅ Hitbox مكبر 95 مع تلوين بنفسجي
+-- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفس النظام القديم)
 -- ✅ نظام PVP Radar يظهر حالة اللاعبين (ON/OFF/FIGHT)
--- ✅ الكاميرا تتبع فقط اللاعبين المشغلين لـ PvP (ON أو FIGHT)
+-- ✅ نظام الفرق (Pirates/Marines) يعمل بشكل طبيعي
+-- ✅ تأثير الضربات على الفواكه والخوصم طبيعي 100%
 -- ✅ عند موت الهدف، ينتقل تلقائياً للهدف التالي
--- ✅ يتجاهل اللاعبين المدمجين (المتضررين)
 
 local AimbotModule = {}
 
@@ -107,9 +107,9 @@ do
     end
 
     -- ==================================================
-    -- التحقق من أن اللاعب صالح
+    -- نظام التحقق من العدو (مع نظام الفرق)
     -- ==================================================
-    local function IsValidPlayer(plr)
+    local function IsValidEnemy(plr)
         if not plr or plr == player then return false end
         if not plr:IsA("Player") then return false end
         
@@ -117,10 +117,7 @@ do
         if not char then return false end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return false end
-        
-        -- 🔥 إذا كان ميتاً أو صحته 0 => تجاهل
-        if hum.Health <= 0 then return false end
+        if not hum or hum.Health <= 0 then return false end
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return false end
@@ -130,10 +127,32 @@ do
             return false
         end
         
-        -- 🔥 التحقق من PVP: فقط ON أو FIGHT
-        local state, _ = GetPlayerState(plr)
-        if state == "OFF" then
-            return false
+        -- 🔥 نظام الفرق (Pirates/Marines)
+        local myTeam = player.Team
+        local targetTeam = plr.Team
+        
+        -- القراصنة يستهدفون الكل
+        if myTeam and myTeam.Name == "Pirates" then
+            -- 🔥 لكن نتأكد من PVP ON
+            local state, _ = GetPlayerState(plr)
+            if state == "OFF" then
+                return false
+            end
+            return true
+        end
+        
+        -- البحرية تستهدف القراصنة فقط
+        if myTeam and myTeam.Name == "Marines" then
+            if targetTeam and targetTeam.Name == "Pirates" then
+                -- 🔥 نتأكد من PVP ON
+                local state, _ = GetPlayerState(plr)
+                if state == "OFF" then
+                    return false
+                end
+                return true
+            else
+                return false
+            end
         end
         
         return true
@@ -218,9 +237,9 @@ do
     end
 
     -- ==================================================
-    -- الحصول على أقرب لاعب صالح
+    -- الحصول على أقرب عدو
     -- ==================================================
-    local function GetNearestPlayer()
+    local function GetNearestEnemy()
         local char = player.Character
         if not char then return nil end
         
@@ -236,7 +255,7 @@ do
         local myPos = myHrp.Position
         
         for _, pl in ipairs(Players:GetPlayers()) do
-            if IsValidPlayer(pl) then
+            if IsValidEnemy(pl) then
                 local hrp = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     local dist = (hrp.Position - myPos).Magnitude
@@ -267,7 +286,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
 
     -- ==================================================
-    -- تطبيق Hitbox
+    -- تطبيق Hitbox (نفس النظام القديم)
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -281,14 +300,17 @@ do
             end
             
             pcall(function()
+                -- 🔥 Hitbox حجم 95 شفاف
                 rootPart.Size = Vector3.new(95, 95, 95)
                 rootPart.CanCollide = false
                 rootPart.Transparency = 1.0
                 rootPart.Material = Enum.Material.ForceField
                 
+                -- التلوين البنفسجي
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
+                -- تفعيل CombatController
                 if CombatController and type(CombatController.runHitDetection) == "function" then
                     task.spawn(function()
                         pcall(function() CombatController.runHitDetection(plr.Character) end)
@@ -307,6 +329,7 @@ do
         local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
         if rootPart then
             pcall(function()
+                -- 🔥 إرجاع الحجم الطبيعي
                 rootPart.Size = Vector3.new(2, 2, 2)
                 rootPart.CanCollide = true
                 rootPart.Transparency = 0
@@ -320,7 +343,7 @@ do
     end
 
     -- ==================================================
-    -- تحديث الهدف (مع إعادة تعيين تلقائية عند الموت)
+    -- تحديث الهدف
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().CamLockActive then
@@ -334,11 +357,9 @@ do
             return
         end
         
-        -- 🔥 التحقق من أن الهدف الحالي لا يزال صالحاً
+        -- 🔥 التحقق من أن الهدف لا يزال صالحاً
         if lastTarget then
-            local stillValid = IsValidPlayer(lastTarget)
-            if not stillValid then
-                -- الهدف مات أو أصبح OFF أو دخل منطقة محظورة
+            if not IsValidEnemy(lastTarget) then
                 ResetHitbox(lastTarget)
                 lastTarget = nil
                 CurrentTarget = nil
@@ -347,9 +368,9 @@ do
             end
         end
         
-        -- 🔥 البحث عن هدف جديد إذا لم يكن هناك هدف أو الهدف السابق مات
+        -- 🔥 البحث عن هدف جديد
         if not lastTarget then
-            local newTarget = GetNearestPlayer()
+            local newTarget = GetNearestEnemy()
             if newTarget then
                 lastTarget = newTarget
                 CurrentTarget = newTarget
@@ -364,7 +385,7 @@ do
     end)
 
     -- ==================================================
-    -- CAMERA LOCK (تتبع الهدف الحي فقط)
+    -- CAMERA LOCK
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().CamLockActive then return end
@@ -380,10 +401,8 @@ do
         
         if IsPositionBlacklisted(myHrp.Position) then return end
         
-        -- 🔥 التأكد من وجود هدف صالح
         if CurrentTarget and lastTarget then
-            -- 🔥 تحقق إضافي أن الهدف لا يزال حياً
-            if not IsValidPlayer(lastTarget) then
+            if not IsValidEnemy(lastTarget) then
                 ResetHitbox(lastTarget)
                 lastTarget = nil
                 CurrentTarget = nil
@@ -411,12 +430,12 @@ do
     end)
 
     -- ==================================================
-    -- صيانة Hitbox (تحديث مستمر)
+    -- صيانة Hitbox
     -- ==================================================
     task.spawn(function()
         while task.wait(0.15) do
             if getgenv().CamLockActive and lastTarget then
-                if IsValidPlayer(lastTarget) then
+                if IsValidEnemy(lastTarget) then
                     local hrp = lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart")
                     if hrp and not IsPositionBlacklisted(hrp.Position) then
                         ApplyHitboxSystem(lastTarget)
@@ -439,23 +458,7 @@ do
     end)
 
     -- ==================================================
-    -- مراقبة تغيير شخصية الهدف (إذا مات ورجع)
-    -- ==================================================
-    local function OnTargetCharacterAdded()
-        if lastTarget then
-            lastTarget.CharacterAdded:Connect(function(newChar)
-                task.wait(1)
-                if IsValidPlayer(lastTarget) then
-                    CurrentTarget = lastTarget
-                    targetCharacter = newChar
-                    ApplyHitboxSystem(lastTarget)
-                end
-            end)
-        end
-    end
-
-    -- ==================================================
-    -- إعداد الرادار للاعبين
+    -- إعداد الرادار
     -- ==================================================
     local function SetupRadarForPlayer(plr)
         if plr == player then return end
@@ -522,6 +525,7 @@ do
     print("[ARAKS HUB] ✅ CAMERA LOCK + HITBOX + RADAR ACTIVATED!")
     print("[ARAKS HUB] 🚫 تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
     print("[ARAKS HUB] 📡 PVP Radar يعمل - يظهر ON/OFF/FIGHT")
+    print("[ARAKS HUB] ⚔️ نظام الفرق يعمل (Pirates/Marines)")
 end
 
 return AimbotModule
