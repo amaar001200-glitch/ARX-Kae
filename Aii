@@ -1,6 +1,6 @@
 -- =============================================================================
--- █ ARAKS HUB | AUTO HUNT MODULE (FIXED SKILLS ACTIVATION + SIZE 500)
--- version 2.8.7 (Fixed: Server Freezing, Skill Lock, Absolute Zone Filter & Melee Hitbox Damage)
+-- █ ARAKS HUB | AUTO HUNT MODULE (NORMAL SIZE + FAST COMBOS + STRICT ANTI-ZONE)
+-- version 2.8.9 (Fixed: No Scale, Ultra Fast Weapon Swap, Absolute Zone Lock)
 -- =============================================================================
 
 local AutoHuntModule = {}
@@ -25,13 +25,11 @@ pcall(function()
     CombatController = require(ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("CombatController"))
 end)
 
-local EnemyBlockSize = 500 
-local MyScaleSize = 500 
 local TweenSpeed = 350 
 local currentTween = nil
 local GlobalTargetPos = nil
 local CurrentSkillThread = nil 
-local lastHitTick = 0 -- لمنع تجميد السيرفر
+local lastHitTick = 0 
 
 local BlacklistedZones = {
     Vector3.new(-11.26, 19.31, 2827.25),
@@ -46,9 +44,11 @@ local BlacklistedZones = {
     Vector3.new(-16228.93, 9.09, 375.49)
 }
 
+-- فحص صارم يمنع الاقتراب من الإحداثيات نهائياً
 local function IsInBlacklistedZone(targetPos)
+    if not targetPos then return true end
     for _, zonePos in ipairs(BlacklistedZones) do
-        if (targetPos - zonePos).Magnitude <= 120 then return true end
+        if (targetPos - zonePos).Magnitude <= 150 then return true end -- رفعنا المدى قليلاً لزيادة الأمان
     end
     return false
 end
@@ -68,6 +68,8 @@ local function IsValidEnemy(plr)
     local root = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 or not root then return false end
+    
+    -- حماية مطلقة: لو الخصم داخل المنطقة السوداء، نلغيه تماماً ولا نعتبره هدف صالح
     if IsInBlacklistedZone(root.Position) then return false end
     
     local myTeam = LocalPlayer.Team
@@ -102,76 +104,8 @@ end
 local function TapKey(key)
     if not IsAlive() then return end
     VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.08)
+    task.wait(0.03) -- استجابة ضغط أسرع
     VirtualInputManager:SendKeyEvent(false, key, false, game)
-end
-
--- تم تعديلها لتصبح مطابقة تماماً لـ ApplyHitboxSystem بدون الـ Loop الفرعي المدمر لأطراف الجسم
-local function ScaleLocalPlayer(makeGiant)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    
-    if root and humanoid and humanoid.Health > 0 then
-        pcall(function()
-            if makeGiant then
-                root.Size = Vector3.new(MyScaleSize, MyScaleSize, MyScaleSize)
-                root.CanCollide = false
-                root.Transparency = 0.5
-                root.Color = Color3.fromRGB(255, 120, 0) 
-                root.Material = Enum.Material.Neon
-                
-                if CombatController and type(CombatController.runHitDetection) == "function" then
-                    CombatController.runHitDetection(char)
-                end
-            else
-                root.Size = Vector3.new(2, 2, 2)
-                root.CanCollide = true
-                root.Transparency = 0
-                root.Material = Enum.Plastic
-            end
-        end)
-    end
-end
-
-local function ApplyHitboxSystem(plr)
-    if not plr or not plr.Character or plr == LocalPlayer then return end
-    local char = plr.Character
-    local rootPart = char:FindFirstChild("HumanoidRootPart")
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    
-    if rootPart and humanoid and humanoid.Health > 0 then
-        pcall(function()
-            rootPart.Size = Vector3.new(EnemyBlockSize, EnemyBlockSize, EnemyBlockSize)
-            rootPart.CanCollide = false
-            rootPart.Transparency = 0.5
-            rootPart.Color = Color3.fromRGB(255, 120, 0) 
-            rootPart.Material = Enum.Material.Neon
-            
-            if CombatController and type(CombatController.runHitDetection) == "function" then
-                CombatController.runHitDetection(char)
-            end
-        end)
-    end
-end
-
-local function ResetHitbox(plr)
-    if not plr or not plr.Character or plr == LocalPlayer then return end
-    local rootPart = plr.Character:FindFirstChild("HumanoidRootPart")
-    if rootPart then
-        pcall(function()
-            rootPart.Size = Vector3.new(2, 2, 2)
-            rootPart.CanCollide = true
-            rootPart.Transparency = 0
-            rootPart.Material = Enum.Plastic
-        end)
-    end
-end
-
-local function ResetAllServerHitboxes()
-    ScaleLocalPlayer(false)
-    for _, pl in ipairs(Players:GetPlayers()) do ResetHitbox(pl) end
 end
 
 local function Attack(target)
@@ -181,8 +115,7 @@ local function Attack(target)
             RegisterAttack:FireServer(0.5)
             RegisterHit:FireServer(target.HumanoidRootPart, {}, nil, "")
             
-            -- حماية الوقت المستقطع لمنع تجميد اللعبة والسكلات (Cooldown آمن وسريع)
-            if tick() - lastHitTick > 0.15 then
+            if tick() - lastHitTick > 0.12 then
                 lastHitTick = tick()
                 RegisterHit:FireServer(target.HumanoidRootPart, {{target, target.HumanoidRootPart}})
                 RegisterHit:FireServer(target.HumanoidRootPart, {}, "Melee", "")
@@ -198,40 +131,38 @@ local function FireTimedSkills(targetPlayer)
     CurrentSkillThread = task.spawn(function()
         while IsModuleActive() and IsAlive() and IsValidEnemy(targetPlayer) do
             
+            -- تبديل سريع جداً للسلاح الأول
             TapKey(Enum.KeyCode.One)
-            task.wait(0.25)
+            task.wait(0.05) 
             
             local startTime1 = tick()
-            while tick() - startTime1 < 10 do
+            while tick() - startTime1 < 6 do -- تقليل وقت الانتظار لجعل الكومبو ديناميكي
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                    if tool then 
-                        pcall(function() tool:Activate() end)
-                    end
-                    task.wait(0.5)
+                    if tool then pcall(function() tool:Activate() end) end
+                    task.wait(0.1) -- تسريع إطلاق السكلات المتتالية
                 end
-                task.wait(0.3)
+                task.wait(0.05)
             end
 
+            -- تبديل سريع جداً للسلاح الثاني
             TapKey(Enum.KeyCode.Two)
-            task.wait(0.25)
+            task.wait(0.05)
             
             local startTime2 = tick()
-            while tick() - startTime2 < 5 do
+            while tick() - startTime2 < 4 do
                 if not IsAlive() or not IsModuleActive() or not IsValidEnemy(targetPlayer) then return end
                 for _, skill in ipairs(SkillKeys) do
                     TapKey(skill)
                     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                    if tool then 
-                        pcall(function() tool:Activate() end)
-                    end
-                    task.wait(0.5)
+                    if tool then pcall(function() tool:Activate() end) end
+                    task.wait(0.1)
                 end
-                task.wait(0.3)
+                task.wait(0.05)
             end
-            task.wait(0.1)
+            task.wait(0.02)
         end
     end)
 end
@@ -240,6 +171,7 @@ local function SmoothMoveTo(targetChar, myHrp)
     if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then return end
     local enemyRoot = targetChar.HumanoidRootPart
     
+    -- قفل الإحداثيات: لو إحداثي الخصم محظور، نلغي التوين فوراً ولا نذهب إليه
     if IsInBlacklistedZone(enemyRoot.Position) then 
         if currentTween then currentTween:Cancel() end
         return 
@@ -270,7 +202,7 @@ local function SmoothMoveTo(targetChar, myHrp)
 end
 
 -- ==================================================
--- اللوب الأساسي الديناميكي
+-- اللوب الأساسي الديناميكي (بدون أي تكبير)
 -- ==================================================
 task.spawn(function()
     while true do
@@ -284,7 +216,6 @@ task.spawn(function()
             continue
         end
         
-        ScaleLocalPlayer(true)
         local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         local huntTarget = nil
         
@@ -312,8 +243,8 @@ task.spawn(function()
             local enemy = huntTarget.Character
             local humanoid = enemy and enemy:FindFirstChild("Humanoid")
             
-            if humanoid and humanoid.Health > 0 and IsValidEnemy(huntTarget) then
-                ApplyHitboxSystem(huntTarget)
+            -- فحص نهائي للتأكد من أن الهدف لم يدخل المنطقة المحظورة أثناء الملاحقة
+            if humanoid and humanoid.Health > 0 and IsValidEnemy(huntTarget) and not IsInBlacklistedZone(enemy.HumanoidRootPart.Position) then
                 SmoothMoveTo(enemy, myHrp)
                 
                 if (myHrp.Position - enemy.HumanoidRootPart.Position).Magnitude < 750 then
@@ -323,25 +254,13 @@ task.spawn(function()
                 end
                 
                 Attack(enemy)
-                task.wait(0.15) 
+                task.wait(0.12) 
             else
                 if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
             end
         else
             if CurrentSkillThread then task.cancel(CurrentSkillThread); CurrentSkillThread = nil end
         end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        if IsModuleActive() then
-            ScaleLocalPlayer(true)
-            for _, pl in ipairs(Players:GetPlayers()) do
-                if IsValidEnemy(pl) then ApplyHitboxSystem(pl) end
-            end
-        end
-        task.wait(0.5)
     end
 end)
 
@@ -396,7 +315,6 @@ function AutoHuntModule:Stop()
     AutoHuntModule.KillNearest = false
     AutoHuntModule.SelectedPlayer = nil
     GlobalTargetPos = nil
-    ResetAllServerHitboxes()
 end
 
 return AutoHuntModule
