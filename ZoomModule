@@ -1,0 +1,67 @@
+-- =============================================================================
+-- █ ARAKS HUB | CAMERA ZOOM MODULE (FULLY INTEGRATED WITH SLIDER)
+-- =============================================================================
+
+local CameraZoomModule = {}
+
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+
+local ZoomEnabled = false
+local ZoomConnection = nil
+local CurrentFOV = 120
+
+-- ضبط مجال الرؤية
+local function SetFOV(fov)
+    pcall(function()
+        if Camera then
+            Camera.FieldOfView = fov
+        end
+    end)
+end
+
+-- ===== تشغيل التكبير =====
+function CameraZoomModule:Enable()
+    if ZoomEnabled then return end
+    ZoomEnabled = true
+    SetFOV(CurrentFOV)
+    
+    if ZoomConnection then ZoomConnection:Disconnect() end
+    ZoomConnection = RunService.RenderStepped:Connect(function()
+        if ZoomEnabled and Camera then
+            Camera.FieldOfView = CurrentFOV
+        end
+    end)
+    print("[ARAKS] Camera Zoom ENABLED - FOV: " .. CurrentFOV)
+end
+
+-- ===== إيقاف التكبير =====
+function CameraZoomModule:Disable()
+    ZoomEnabled = false
+    if ZoomConnection then
+        ZoomConnection:Disconnect()
+        ZoomConnection = nil
+    end
+    SetFOV(70)
+    print("[ARAKS] Camera Zoom DISABLED")
+end
+
+-- ===== تغيير قيمة التكبير =====
+function CameraZoomModule:SetFOV(value)
+    CurrentFOV = math.clamp(value, 50, 160)
+    if ZoomEnabled then
+        SetFOV(CurrentFOV)
+    end
+end
+
+-- ===== الحصول على القيمة الحالية =====
+function CameraZoomModule:GetFOV()
+    return CurrentFOV
+end
+
+-- ===== تنظيف =====
+function CameraZoomModule:Cleanup()
+    self:Disable()
+end
+
+return CameraZoomModule
