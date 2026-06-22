@@ -3,6 +3,7 @@
 -- ✅ منع تام للاعبين في المناطق المحظورة
 -- ✅ الكاميرا فقط بدون أي توجيه ضربات
 -- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفس النظام القديم)
+-- ✅ قفل كاميرا فوري وصارم (INSTANT LOCK) بدون تموج لمنع ضياع الضربات مع اللفات
 -- ✅ نظام PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي
 -- ✅ نظام الفرق (Pirates/Marines) يعمل بشكل طبيعي
 -- ✅ تأثير الضربات على الفواكه والخوصم طبيعي 100%
@@ -24,9 +25,7 @@ do
     end)
 
     -- 🔥 نفس طريقة التحكم في السكربت القديم
-    getgenv().AimbotActive = false  -- نفس الطريقة القديمة
-    
-    -- نربط المتغير الجديد بالمتغير القديم
+    getgenv().AimbotActive = false  
     getgenv().CamLockActive = getgenv().AimbotActive
 
     -- ==================================================
@@ -184,7 +183,6 @@ do
         radarGui.MaxDistance = RADAR_SETTINGS.MaxDistance
         radarGui.Size = UDim2.new(0, 58, 0, 12)
         radarGui.StudsOffset = Vector3.new(2.8, -2.6, 0)
-        -- إخفاء الرادار تماماً (يعمل في الخلفية)
         radarGui.Enabled = false
         radarGui.Parent = head
         
@@ -282,7 +280,7 @@ do
     local targetCharacter = nil
     
     local PurpleChams = Instance.new("BoxHandleAdornment")
-    PurpleChams.Size = Vector3.new(4, 6, 4) -- الحجم الطبيعي لإشارة الخصم
+    PurpleChams.Size = Vector3.new(4, 6, 4) 
     PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
     PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
@@ -291,7 +289,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
 
     -- ==================================================
-    -- تطبيق Hitbox (تم تصليح الارتداد)
+    -- تطبيق Hitbox الطبيعي بدون ارتداد
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -305,15 +303,12 @@ do
             end
             
             pcall(function()
-                -- Hitbox حجم 95 شفاف بدون تدمير الخصائص الفيزيائية لمنع الارتداد
                 rootPart.Size = Vector3.new(95, 95, 95)
                 rootPart.Transparency = 1.0
                 
-                -- التلوين البنفسجي الطبيعي
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
-                -- تفعيل CombatController
                 if CombatController and type(CombatController.runHitDetection) == "function" then
                     task.spawn(function()
                         pcall(function() CombatController.runHitDetection(plr.Character) end)
@@ -384,7 +379,7 @@ do
     end)
 
     -- ==================================================
-    -- CAMERA LOCK (توجيه سريع ودقيق ومباشر لمنع الضرب في المكان القديم)
+    -- CAMERA LOCK (قفل فوري وصارم بقوة 100% بدون أي Lerp أو تموج)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end  
@@ -421,9 +416,9 @@ do
                     return
                 end
                 
-                -- إغلاق فوري على إحداثيات الخصم الحالية وبسرعة تتبع عالية جداً (0.35) لمنع فوات المهارات
-                local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.35)
+                -- 🔥 تم حذف الـ Lerp نهائياً؛ قفل الكاميرا الآن مباشر وحاد 100% على الخصم
+                -- لن تضيع الضربة حتى لو لفّ أو تحرك بسرعة البرق
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
             end
         end
     end)
@@ -541,7 +536,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] ✅ FIXED AND SYNCHRONIZED SUCCESSFULLY!")
+    print("[ARAKS HUB] ✅ INSTANT LOCK + FIXES ACTIVATED SUCCESSFULLY!")
 end
 
 return AimbotModule
