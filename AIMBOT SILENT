@@ -2,7 +2,7 @@
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
 -- ✅ الكاميرا فقط بدون أي توجيه ضربات
--- ✅ Hitbox مكبر 95 مع تلوين بنفسجي يغطي الحجم بالكامل (نفس النظام القديم مع توضيح الرؤية)
+-- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفس النظام القديم)
 -- ✅ نظام PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي
 -- ✅ نظام الفرق (Pirates/Marines) يعمل بشكل طبيعي
 -- ✅ تأثير الضربات على الفواكه والخوصم طبيعي 100%
@@ -282,17 +282,16 @@ do
     local targetCharacter = nil
     
     local PurpleChams = Instance.new("BoxHandleAdornment")
-    -- تظبيط حجم المجسم البنفسجي ليتطابق مع حجم الهيت بوكس الـ 95 تماماً
-    PurpleChams.Size = Vector3.new(95, 95, 95)
+    PurpleChams.Size = Vector3.new(4, 6, 4) -- الحجم الطبيعي لإشارة الخصم
     PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
     PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
-    PurpleChams.Transparency = 0.75 -- جعل الشفافية خفيفة لكي لا يعمي الشاشة وتكون الرؤية واضحة
+    PurpleChams.Transparency = 0.4
     PurpleChams.Visible = false
     PurpleChams.Parent = game:GetService("CoreGui")
 
     -- ==================================================
-    -- تطبيق Hitbox 95 والتلوين الشامل
+    -- تطبيق Hitbox (تم تصليح الارتداد)
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -306,13 +305,11 @@ do
             end
             
             pcall(function()
-                -- Hitbox حجم 95 شفاف
+                -- Hitbox حجم 95 شفاف بدون تدمير الخصائص الفيزيائية لمنع الارتداد
                 rootPart.Size = Vector3.new(95, 95, 95)
-                rootPart.CanCollide = false
                 rootPart.Transparency = 1.0
-                rootPart.Material = Enum.Material.ForceField
                 
-                -- التلوين البنفسجي يغطي الهيت بوكس الـ 95 بالكامل الآن
+                -- التلوين البنفسجي الطبيعي
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
@@ -336,7 +333,6 @@ do
         if rootPart then
             pcall(function()
                 rootPart.Size = Vector3.new(2, 2, 2)
-                rootPart.CanCollide = true
                 rootPart.Transparency = 0
             end)
         end
@@ -388,7 +384,7 @@ do
     end)
 
     -- ==================================================
-    -- CAMERA LOCK (حل مشكلة التتبع الجنوني والضربات الفوقانية)
+    -- CAMERA LOCK (توجيه سريع ودقيق ومباشر لمنع الضرب في المكان القديم)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end  
@@ -425,12 +421,9 @@ do
                     return
                 end
                 
-                -- ضبط زاوية الرؤية (التثبيت الأفقي الطبيعي لمنع رفع الأيم في الهواء أو الضرب بالجدران)
-                local targetPosition = targetPart.Position
-                local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPosition)
-                
-                -- استخدام تنعيم ذكي (0.12) بدلاً من 0.3 لمنع الاهتزاز واللحاق العشوائي
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.12)
+                -- إغلاق فوري على إحداثيات الخصم الحالية وبسرعة تتبع عالية جداً (0.35) لمنع فوات المهارات
+                local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.35)
             end
         end
     end)
@@ -507,15 +500,14 @@ do
         end)
     end
 
-    -- تشغيل الرادار في الخلفية
     StartRadar()
 
     -- ==================================================
-    -- API (نفس طريقة السكربت القديم)
+    -- API
     -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
-        getgenv().CamLockActive = state  -- مزامنة المتغيرين
+        getgenv().CamLockActive = state  
         if not state then
             if lastTarget then
                 ResetHitbox(lastTarget)
@@ -549,7 +541,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] ✅ FULL MODIFIED CODE LOADED SUCCESSFULLY!")
+    print("[ARAKS HUB] ✅ FIXED AND SYNCHRONIZED SUCCESSFULLY!")
 end
 
 return AimbotModule
