@@ -1,9 +1,8 @@
 -- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR (خلفية فقط)
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
--- ✅ الكاميرا فقط بدون أي توجيه ضربات
+-- ✅ الكاميرا فقط مع توقع حركة متطور وتوسيط دقيق
 -- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفس النظام القديم)
--- ✅ قفل كاميرا فوري وصارم (INSTANT LOCK) بدون تموج لمنع ضياع الضربات مع اللفات
 -- ✅ نظام PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي
 -- ✅ نظام الفرق (Pirates/Marines) يعمل بشكل طبيعي
 -- ✅ تأثير الضربات على الفواكه والخوصم طبيعي 100%
@@ -25,7 +24,7 @@ do
     end)
 
     -- 🔥 نفس طريقة التحكم في السكربت القديم
-    getgenv().AimbotActive = false  
+    getgenv().AimbotActive = false  -- نفس الطريقة القديمة
     getgenv().CamLockActive = getgenv().AimbotActive
 
     -- ==================================================
@@ -124,16 +123,13 @@ do
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return false end
         
-        -- منع اللاعبين في المناطق المحظورة
         if IsPositionBlacklisted(hrp.Position) then
             return false
         end
         
-        -- نظام الفرق (Pirates/Marines)
         local myTeam = player.Team
         local targetTeam = plr.Team
         
-        -- القراصنة يستهدفون الكل
         if myTeam and myTeam.Name == "Pirates" then
             local state, _ = GetPlayerState(plr)
             if state == "OFF" then
@@ -142,7 +138,6 @@ do
             return true
         end
         
-        -- البحرية تستهدف القراصنة فقط
         if myTeam and myTeam.Name == "Marines" then
             if targetTeam and targetTeam.Name == "Pirates" then
                 local state, _ = GetPlayerState(plr)
@@ -241,7 +236,7 @@ do
     -- الحصول على أقرب عدو
     -- ==================================================
     local function GetNearestEnemy()
-        if not getgenv().AimbotActive then return nil end  
+        if not getgenv().AimbotActive then return nil end
         
         local char = player.Character
         if not char then return nil end
@@ -280,7 +275,7 @@ do
     local targetCharacter = nil
     
     local PurpleChams = Instance.new("BoxHandleAdornment")
-    PurpleChams.Size = Vector3.new(4, 6, 4) 
+    PurpleChams.Size = Vector3.new(4, 6, 4)
     PurpleChams.Color3 = Color3.fromRGB(165, 0, 255)
     PurpleChams.AlwaysOnTop = true
     PurpleChams.ZIndex = 10
@@ -289,7 +284,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
 
     -- ==================================================
-    -- تطبيق Hitbox الطبيعي بدون ارتداد
+    -- تطبيق Hitbox (نفس النظام القديم)
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -304,7 +299,9 @@ do
             
             pcall(function()
                 rootPart.Size = Vector3.new(95, 95, 95)
+                rootPart.CanCollide = false
                 rootPart.Transparency = 1.0
+                rootPart.Material = Enum.Material.ForceField
                 
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
@@ -328,6 +325,7 @@ do
         if rootPart then
             pcall(function()
                 rootPart.Size = Vector3.new(2, 2, 2)
+                rootPart.CanCollide = true
                 rootPart.Transparency = 0
             end)
         end
@@ -342,7 +340,7 @@ do
     -- تحديث الهدف
     -- ==================================================
     RunService.RenderStepped:Connect(function()
-        if not getgenv().AimbotActive then  
+        if not getgenv().AimbotActive then
             if lastTarget then
                 ResetHitbox(lastTarget)
                 lastTarget = nil
@@ -379,10 +377,10 @@ do
     end)
 
     -- ==================================================
-    -- CAMERA LOCK (قفل فوري وصارم بقوة 100% بدون أي Lerp أو تموج)
+    -- 🔥 CAMERA LOCK WITH ADVANCED PREDICTION AND FIXED OFFSET
     -- ==================================================
     RunService.RenderStepped:Connect(function()
-        if not getgenv().AimbotActive then return end  
+        if not getgenv().AimbotActive then return end
         
         local char = player.Character
         if not char then return end
@@ -416,9 +414,21 @@ do
                     return
                 end
                 
-                -- 🔥 تم حذف الـ Lerp نهائياً؛ قفل الكاميرا الآن مباشر وحاد 100% على الخصم
-                -- لن تضيع الضربة حتى لو لفّ أو تحرك بسرعة البرق
-                Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+                -- 🎯 1. ضبط السنتر (التوسيط بضبط لمنع الكاميرا من الصعود للأعلى)
+                local basePosition = targetPart.Position
+                local centerPosition = basePosition - Vector3.new(0, 0.45, 0) -- يطرح جزء بسيط ليصيب المنتصف تماماً
+                
+                -- 🚀 2. حساب حركة الخصم (Velocity Prediction)
+                -- معامل التوقع السحري، جرب بين (0.11 إلى 0.14) حسب بنق السيرفر
+                local predictionFactor = 0.135 
+                local targetVelocity = targetPart.AssemblyLinearVelocity or targetPart.Velocity or Vector3.new(0,0,0)
+                
+                -- الموقع النهائي المتوقع بعد معالجة الحركة والسرعة المفاجئة
+                local finalPredictedPosition = centerPosition + (targetVelocity * predictionFactor)
+                
+                -- 🎥 3. توجيه الكاميرا بسلاسة فائقة للهدف المتوقع وثبات 100%
+                local targetCFrame = CFrame.new(Camera.CFrame.Position, finalPredictedPosition)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.28) -- سلاسة تتبع ممتازة تمنع كسر الكاميرا عند الـ Flick
             end
         end
     end)
@@ -428,7 +438,7 @@ do
     -- ==================================================
     task.spawn(function()
         while task.wait(0.15) do
-            if getgenv().AimbotActive and lastTarget then  
+            if getgenv().AimbotActive and lastTarget then
                 if IsValidEnemy(lastTarget) then
                     local hrp = lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart")
                     if hrp and not IsPositionBlacklisted(hrp.Position) then
@@ -495,14 +505,15 @@ do
         end)
     end
 
+    -- تشغيل الرادار (خلفية)
     StartRadar()
 
     -- ==================================================
-    -- API
+    -- API (نفس طريقة السكربت القديم)
     -- ==================================================
     function AimbotModule:SetState(state)
         getgenv().AimbotActive = state
-        getgenv().CamLockActive = state  
+        getgenv().CamLockActive = state
         if not state then
             if lastTarget then
                 ResetHitbox(lastTarget)
@@ -515,14 +526,14 @@ do
     end
 
     -- ==================================================
-    -- مراقبة التغييرات على المتغير
+    -- 🔥 مراقبة التغييرات على المتغير
     -- ==================================================
     task.spawn(function()
         local lastState = getgenv().AimbotActive
         while task.wait(0.05) do
             if getgenv().AimbotActive ~= lastState then
                 lastState = getgenv().AimbotActive
-                getgenv().CamLockActive = lastState  
+                getgenv().CamLockActive = lastState
                 if not lastState then
                     if lastTarget then
                         ResetHitbox(lastTarget)
@@ -536,7 +547,11 @@ do
         end
     end)
 
-    print("[ARAKS HUB] ✅ INSTANT LOCK + FIXES ACTIVATED SUCCESSFULLY!")
+    print("[ARAKS HUB] ✅ CAMERA LOCK WITH PREDICTION + HITBOX + RADAR ACTIVATED!")
+    print("[ARAKS HUB] 🚫 تم منع " .. #BlacklistedPositions .. " منطقة محظورة")
+    print("[ARAKS HUB] 📡 PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي")
+    print("[ARAKS HUB] ⚔️ نظام الفرق يعمل (Pirates/Marines)")
+    print("[ARAKS HUB] 🔘 نفس طريقة التحكم القديمة: getgenv().AimbotActive")
 end
 
 return AimbotModule
