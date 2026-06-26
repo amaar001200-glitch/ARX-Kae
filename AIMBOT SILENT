@@ -2,12 +2,12 @@
 -- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR (خلفية فقط)
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
--- ✅ الكاميرا فقط مع التوقع وموازنة البعد الديناميكي - تم الإصلاح
--- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (لا يصد الضربات - نفاذية 100%)
+-- ✅ الكاميرا حادة وثابتة بلملي بدون اهتزاز مع قفل المسافة (1000 متر)
+-- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفاذية كاملة - لا يصد الضربات)
 -- ✅ نظام PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي
--- ✅ نظام الفرق (Pirates/Marines) يعمل بشكل طبيعي
+-- ✅ نظام الفرق (Pirates/Marines) يعمل بشكل طبيعي دون تعديل
 -- ✅ تأثير الضربات على الفواكه والخوصم طبيعي 100%
--- ✅ عند موت الهدف، أو ابتعاده وظهور هدف أقرب، ينتقل تلقائياً
+-- ✅ عند موت الهدف، ينتقل تلقائياً للهدف التالي الأقرب
 -- ==================================================
 
 local AimbotModule = {}
@@ -30,7 +30,7 @@ do
     getgenv().CamLockActive = getgenv().AimbotActive
 
     -- ==================================================
-    -- قائمة الإحداثيات المحظورة (Anti-Farm)
+    -- قائمة الإحداثيات المحظورة (Anti-Farm) - لم يتم تعديلها
     -- ==================================================
     local BlacklistedPositions = {
         Vector3.new(-11.26, 19.31, 2827.25),
@@ -46,7 +46,7 @@ do
     }
 
     -- ==================================================
-    -- متغيرات PVP Radar
+    -- متغيرات PVP Radar - لم يتم تعديلها
     -- ==================================================
     local FightCache = {}
     local RADAR_SETTINGS = {
@@ -60,7 +60,7 @@ do
     local activeRadars = {}
 
     -- ==================================================
-    -- التحقق من الموقع المحظور
+    -- التحقق من الموقع المحظور - لم يتم تعديله
     -- ==================================================
     local function IsPositionBlacklisted(position)
         if not position then return true end
@@ -74,7 +74,7 @@ do
     end
 
     -- ==================================================
-    -- الحصول على حالة PVP للاعب
+    -- الحصول على حالة PVP للاعب - لم يتم تعديله
     -- ==================================================
     local function GetPlayerState(plr)
         if not plr or plr == player then
@@ -110,7 +110,7 @@ do
     end
 
     -- ==================================================
-    -- نظام التحقق من العدو (مع نظام الفرق)
+    -- نظام التحقق من العدو (مع الفرق وبدون أي تعديل على فحص الـ PVP)
     -- ==================================================
     local function IsValidEnemy(plr)
         if not plr or plr == player then return false end
@@ -156,7 +156,7 @@ do
     end
 
     -- ==================================================
-    -- إنشاء رادار PVP (مخفي)
+    -- إنشاء رادار PVP (مخفي) - لم يتم تعديله
     -- ==================================================
     local function CreateRadar(plr)
         if not RADAR_SETTINGS.Enabled then return end
@@ -214,7 +214,7 @@ do
     end
 
     -- ==================================================
-    -- تحديث الرادارات (يعمل في الخلفية)
+    -- تحديث الرادارات (يعمل في الخلفية) - لم يتم تعديله
     -- ==================================================
     local function UpdateAllRadars()
         if not RADAR_SETTINGS.Enabled then return end
@@ -235,7 +235,7 @@ do
     end
 
     -- ==================================================
-    -- الحصول على أقرب عدو ديناميكياً (تم التحديث لمنع التعليق)
+    -- الحصول على أقرب عدو (تم تحديد المسافة بـ 1000 متر كحد أقصى)
     -- ==================================================
     local function GetNearestEnemy()
         if not getgenv().AimbotActive then return nil end  
@@ -251,7 +251,7 @@ do
         end
         
         local nearest = nil
-        local nearestDist = math.huge -- فتح المسافة لتبديل الأهداف بمرونة كاملة
+        local nearestDist = 1000 -- تحديد نطاق البحث بمسافة 1000 متر فقط
         local myPos = myHrp.Position
         
         for _, pl in ipairs(Players:GetPlayers()) do
@@ -286,7 +286,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
 
     -- ==================================================
-    -- تطبيق نظام الـ Hitbox التكيفي (منع اصطدام الضربات نهائياً)
+    -- تطبيق نظام ה-Hitbox التكيفي (نفاذية كاملة وبدون حواجز)
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -309,12 +309,12 @@ do
                     rootPart.Size = Vector3.new(95, 95, 95) 
                 end
                 
-                -- تفكيك وحل مشكلة الحاجز الوهمي الذي يصد الضربات
+                -- إلغاء الاصطدام تماماً وجعله شفافاً لكي تخترقه الضربات بنسبة 100%
                 rootPart.CanCollide = false
-                rootPart.Transparency = 1.0 -- شفاف تماماً لكي تمر منه الضربات وتصيب السيرفر
+                rootPart.Transparency = 1.0
                 rootPart.Material = Enum.Material.ForceField
                 
-                -- التلوين البنفسجي الخارجي فقط كـ مؤشر رؤية
+                -- التلوين البنفسجي يعمل فقط كـ مؤشر رؤية
                 PurpleChams.Adornee = rootPart
                 PurpleChams.Visible = true
                 
@@ -350,7 +350,7 @@ do
     end
 
     -- ==================================================
-    -- تحديث وإدارة الأهداف فورياً في كل فريم
+    -- تحديث وإدارة الأهداف (البحث والتبديل التلقائي الفوري للأقرب)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then  
@@ -364,28 +364,28 @@ do
             return
         end
         
-        -- فحص مستمر لاستبدال الهدف الحالي بالهدف الأقرب فورياً ومنع التعليق
-        local dynamicTarget = GetNearestEnemy()
+        -- البحث عن أقرب هدف ضمن الـ 1000 متر في كل فريم
+        local currentNearest = GetNearestEnemy()
         
-        if dynamicTarget and dynamicTarget ~= lastTarget then
-            if lastTarget then
+        if currentNearest then
+            if lastTarget and lastTarget ~= currentNearest then
                 ResetHitbox(lastTarget)
             end
-            lastTarget = dynamicTarget
-            CurrentTarget = dynamicTarget
-            targetCharacter = dynamicTarget.Character
-            ApplyHitboxSystem(dynamicTarget)
-        elseif not dynamicTarget then
+            lastTarget = currentNearest
+            CurrentTarget = currentNearest
+            targetCharacter = currentNearest.Character
+            ApplyHitboxSystem(currentNearest)
+        else
             if lastTarget then
                 ResetHitbox(lastTarget)
+                lastTarget = nil
             end
-            lastTarget = nil
             CurrentTarget = nil
             targetCharacter = nil
             PurpleChams.Visible = false
         end
 
-        -- تأكيد خصائص الـ Hitbox في كل فريم لضمان عدم تفعيل الاصطدام من اللعبة
+        -- تأكيد إلغاء الاصطدام للـ Hitbox في كل إطار لمنع اللعبة من إرجاعه
         if lastTarget and lastTarget.Character then
             local hrp = lastTarget.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -395,7 +395,7 @@ do
     end)
 
     -- ==================================================
-    -- 🔒 نظام الـ CAMERA LOCK المطور الخالي من الاهتزاز والأخطاء
+    -- 🔒 نظام الـ CAMERA LOCK المطور الصارم (حادي بلملي وثبات كامل)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end  
@@ -419,18 +419,17 @@ do
                 end
                 
                 local cameraPosition = Camera.CFrame.Position
-                -- تثبيت النقطة على الحجم الحقيقي للموقع لمنع ارتفاع الأيم عند الابتعاد
-                local basePosition = targetPart.Position 
+                local basePosition = targetPart.Position
                 
-                -- 🚀 حسبة توقع حركة الخصم الأفقية المتزنة
-                local velocity = targetPart.AssemblyLinearVelocity or targetPart.Velocity or Vector3.new(0,0,0)
-                local prediction = Vector3.new(velocity.X, 0, velocity.Z) * 0.12
+                -- 🚀 حسبة توقع حركة الخصم الأفقية فقط (إلغاء المحور العمودي Y لمنع ارتفاع الأيم للأعلى)
+                local velocity = targetPart.AssemblyLinearVelocity or targetPart.Velocity or Vector3.new(0, 0, 0)
+                local prediction = Vector3.new(velocity.X, 0, velocity.Z) * 0.125
                 
+                -- نقطة الأيم النهائية مغروسة تماماً في السنتر بدون حسابات الـ Drop العمودي الخاطئ
                 local finalTargetPosition = basePosition + prediction
                 
-                -- 🔒 دمج توجيه الكاميرا بنظام Lerp سلس للغاية لحل مشكلة الاهتزاز والتذبذب نهائياً
-                local targetCFrame = CFrame.lookAt(cameraPosition, finalTargetPosition)
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.25) -- سلاسة عالية وتثبيت أيم ممتاز
+                -- 🔒 توجيه حاد، مباشر، وصارم بلملي بدون Lerp لمنع الاهتزاز أو التذبذب
+                Camera.CFrame = CFrame.lookAt(cameraPosition, finalTargetPosition)
             end
         end
     end)
@@ -452,7 +451,7 @@ do
     end)
 
     -- ==================================================
-    -- إعداد الرادار (خلفية)
+    -- إعداد الرادار (خلفية) - لم يتم تعديله
     -- ==================================================
     local function SetupRadarForPlayer(plr)
         if plr == player then return end
@@ -470,7 +469,7 @@ do
     end
 
     -- ==================================================
-    -- بدء تشغيل الرادار (خلفية)
+    -- بدء تشغيل الرادار (خلفية) - لم يتم تعديله
     -- ==================================================
     local function StartRadar()
         for _, plr in pairs(Players:GetPlayers()) do
@@ -533,7 +532,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] ✅ CAMERA LOCK + HITBOX + RADAR ACTIVATED WITH FIXES!")
+    print("[ARAKS HUB] ✅ FIXED SYSTEM: SHARP DIRECT CAMERA + FIXED HEIGHT + 1000M MAX!")
 end
 
 return AimbotModule
