@@ -2,8 +2,8 @@
 -- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR (خلفية فقط)
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
--- ✅ الكاميرا حادة وثابتة بلملي وفي المنتصف تماماً 100% (تم تعديل السنتر بدقة)
--- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفاذية كاملة - لا يصد الضربات)
+-- ✅ الكاميرا حادة وثابتة بلملي وفي المنتصف الحقيقي بناءً على image.png
+-- ✅ Hitbox مكبر 95 يعمل فقط عندما يكون السلاح بيدك (Equipped)
 -- ✅ نظام PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي
 -- ✅ نظام الفرق (Pirates/Marines) وفحص الـ PVP الأصلي 100% بدون أي تعديل
 -- ✅ تأثير الضربات على الفواكه والخوصم طبيعي 100%
@@ -67,6 +67,21 @@ do
         for _, blackPos in ipairs(BlacklistedPositions) do
             local distance = (position - blackPos).Magnitude
             if distance < 100 then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- ==================================================
+    -- التحقق هل اللاعب يمسك سلاحاً بيده (لربط الـ Hitbox)
+    -- ==================================================
+    local function IsHoldingWeapon()
+        local char = player.Character
+        if char then
+            -- الفحص يبحث عن أي أداة (Tool) داخل مجسم الشخصية (وهذا يعني أنها مجهزة باليد)
+            local tool = char:FindFirstChildOfClass("Tool")
+            if tool then
                 return true
             end
         end
@@ -251,7 +266,7 @@ do
         end
         
         local nearest = nil
-        local nearestDist = 1000 -- مسافة 1000 متر القصوى المطلوبة
+        local nearestDist = 1000 
         local myPos = myHrp.Position
         
         for _, pl in ipairs(Players:GetPlayers()) do
@@ -286,7 +301,7 @@ do
     PurpleChams.Parent = game:GetService("CoreGui")
 
     -- ==================================================
-    -- تطبيق نظام ה-Hitbox التكيفي (نفاذية كاملة وبدون حواجز)
+    -- تطبيق نظام الـ Hitbox (يعتمد على السلاح والنفاذ الكامل)
     -- ==================================================
     local function ApplyHitboxSystem(plr)
         if not plr or not plr.Character then return end
@@ -300,29 +315,37 @@ do
             end
             
             pcall(function()
-                local cameraPosition = Camera.CFrame.Position
-                local distance = (rootPart.Position - cameraPosition).Magnitude
-                
-                if distance < 20 then
-                    rootPart.Size = Vector3.new(8, 8, 8) 
+                -- 🛡️ شرط السلاح الحصري: يعمل الـ Hitbox فقط إذا كان السلاح مجهزاً بيدك
+                if IsHoldingWeapon() then
+                    local cameraPosition = Camera.CFrame.Position
+                    local distance = (rootPart.Position - cameraPosition).Magnitude
+                    
+                    if distance < 20 then
+                        rootPart.Size = Vector3.new(8, 8, 8) 
+                    else
+                        rootPart.Size = Vector3.new(95, 95, 95) 
+                    end
+                    
+                    rootPart.CanCollide = false
+                    rootPart.Transparency = 1.0
+                    rootPart.Material = Enum.Material.ForceField
+                    
+                    PurpleChams.Adornee = rootPart
+                    PurpleChams.Visible = true
+                    
+                    -- تفعيل ريموت السيرفر المدمج بالـ CombatController لضمان تلاقي الضربات
+                    if CombatController and type(CombatController.runHitDetection) == "function" then
+                        task.spawn(function()
+                            pcall(function() CombatController.runHitDetection(plr.Character) end)
+                        end)
+                    end
                 else
-                    rootPart.Size = Vector3.new(95, 95, 95) 
-                end
-                
-                -- تفكيك الاصطدام تماماً لكي تمر الضربات من الـ Hitbox بنسبة 100%
-                rootPart.CanCollide = false
-                rootPart.Transparency = 1.0
-                rootPart.Material = Enum.Material.ForceField
-                
-                -- التلوين البنفسجي
-                PurpleChams.Adornee = rootPart
-                PurpleChams.Visible = true
-                
-                -- تفعيل CombatController
-                if CombatController and type(CombatController.runHitDetection) == "function" then
-                    task.spawn(function()
-                        pcall(function() CombatController.runHitDetection(plr.Character) end)
-                    end)
+                    -- إذا لم يكن هناك سلاح باليد، يتم إرجاع الحجم الأصلي لمنع التضارب
+                    rootPart.Size = Vector3.new(2, 2, 2)
+                    rootPart.CanCollide = true
+                    rootPart.Transparency = 0
+                    PurpleChams.Visible = false
+                    PurpleChams.Adornee = nil
                 end
             end)
         end
@@ -388,17 +411,14 @@ do
             end
         end
 
-        -- فرض نفاذية الـ Hitbox لمنع إنشاء حاجز صد الضربات
-        if lastTarget and lastTarget.Character then
-            local hrp = lastTarget.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.CanCollide = false
-            end
+        -- صيانة مستمرة لحالة الـ Hitbox حسب السلاح المجهز
+        if lastTarget then
+            ApplyHitboxSystem(lastTarget)
         end
     end)
 
     -- ==================================================
-    -- 🔒 نظام الـ CAMERA LOCK المطور (إنزال السنتر للمنتصف الحقيقي 100%)
+    -- 🔒 نظام الـ CAMERA LOCK (التوجيه السنتر المتناسق مع نقطة الأيم)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end  
@@ -423,16 +443,16 @@ do
                 
                 local cameraPosition = Camera.CFrame.Position
                 
-                -- 📐 تم زيادة قيمة الإنزال العمودي لـ 5.2 لجبر الأيم على الاستقرار بالمنتصف الحقيقي للخصم تماماً
-                local basePosition = targetPart.Position - Vector3.new(0, 5.2, 0)
+                -- إرجاع الموضع الأصلي الصافي بدون طرح عمودي خاطئ يقلب الكاميرا لأسفل
+                local basePosition = targetPart.Position
                 
-                -- توقع حركة أفقي خالص (بدون لمس الارتفاع العمودي)
+                -- توقع حركة أفقي متزن لثبات الأيم الحاد
                 local velocity = targetPart.AssemblyLinearVelocity or targetPart.Velocity or Vector3.new(0, 0, 0)
                 local prediction = Vector3.new(velocity.X, 0, velocity.Z) * 0.125
                 
                 local finalTargetPosition = basePosition + prediction
                 
-                -- قفل حاد ومباشر بلملي على السنتر الجديد بدون أي اهتزاز أو تذبذب
+                -- قفل حاد ومباشر بلملي على المنتصف المتناسق تماماً مع النقطة البيضاء
                 Camera.CFrame = CFrame.lookAt(cameraPosition, finalTargetPosition)
             end
         end
@@ -548,7 +568,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] ✅ PERFECT ADJUSTED CENTERED CAMERA + SHARP LOCK!")
+    print("[ARAKS HUB] ✅ FIXED WEAPON HITBOX + IMAGE-MATCHED CENTER CAMERA!")
 end
 
 return AimbotModule
