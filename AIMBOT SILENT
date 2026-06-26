@@ -2,7 +2,7 @@
 -- █ ARAKS HUB CAMERA LOCK + ANTI-FARM + PVP RADAR (خلفية فقط)
 -- ✅ تشغيل تلقائي فور الحقن
 -- ✅ منع تام للاعبين في المناطق المحظورة
--- ✅ الكاميرا حادة وثابتة بلملي بدون اهتزاز وفي المنتصف تماماً 100%
+-- ✅ الكاميرا حادة وثابتة بلملي وفي المنتصف تماماً 100% (تم تعديل السنتر بدقة)
 -- ✅ Hitbox مكبر 95 مع تلوين بنفسجي (نفاذية كاملة - لا يصد الضربات)
 -- ✅ نظام PVP Radar يعمل في الخلفية (ON/OFF/FIGHT) - غير مرئي
 -- ✅ نظام الفرق (Pirates/Marines) وفحص الـ PVP الأصلي 100% بدون أي تعديل
@@ -350,7 +350,7 @@ do
     end
 
     -- ==================================================
-    -- تحديث وإدارة الأهداف الأصلية (تمت إعادتها تماماً لمنع تعليق الـ Off)
+    -- تحديث وإدارة الأهداف الأصلية 
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then  
@@ -398,7 +398,7 @@ do
     end)
 
     -- ==================================================
-    -- 🔒 نظام الـ CAMERA LOCK المطور (المنتصف تماماً + تثبيت حاد بلملي)
+    -- 🔒 نظام الـ CAMERA LOCK المطور (إنزال السنتر للمنتصف الحقيقي 100%)
     -- ==================================================
     RunService.RenderStepped:Connect(function()
         if not getgenv().AimbotActive then return end  
@@ -423,9 +423,8 @@ do
                 
                 local cameraPosition = Camera.CFrame.Position
                 
-                -- الموازنة الحقيقية: إنزال المحور Y بمقدار 2.5 لمنع ارتفاع الأيم بسبب الـ Hitbox الـ 95
-                -- ووضعه في منتصف الصدر والبطن تماماً للخصم مهما كانت المسافة
-                local basePosition = targetPart.Position - Vector3.new(0, 2.5, 0)
+                -- 📐 تم زيادة قيمة الإنزال العمودي لـ 5.2 لجبر الأيم على الاستقرار بالمنتصف الحقيقي للخصم تماماً
+                local basePosition = targetPart.Position - Vector3.new(0, 5.2, 0)
                 
                 -- توقع حركة أفقي خالص (بدون لمس الارتفاع العمودي)
                 local velocity = targetPart.AssemblyLinearVelocity or targetPart.Velocity or Vector3.new(0, 0, 0)
@@ -549,7 +548,7 @@ do
         end
     end)
 
-    print("[ARAKS HUB] ✅ PERFECT CENTERED CAMERA + SHARP LOCK + 1000M MAX!")
+    print("[ARAKS HUB] ✅ PERFECT ADJUSTED CENTERED CAMERA + SHARP LOCK!")
 end
 
 return AimbotModule
